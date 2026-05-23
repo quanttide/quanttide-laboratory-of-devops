@@ -156,26 +156,6 @@ impl SubmoduleEditor for GitSubmoduleEditor {
         Ok(issues)
     }
 
-    fn sync_platform(&self, name: &str, env: &str) -> Result<(), Box<dyn std::error::Error>> {
-        // 跨环境版本对齐：扫描当前状态，与环境期望值比对，输出差异报告
-        let state = RepoState::scan(&self.root)?;
-        let sm = state
-            .submodules
-            .iter()
-            .find(|s| s.name == name)
-            .ok_or_else(|| format!("子模块 '{}' 不存在", name))?;
-
-        println!("[{}] 子模块 '{}':", env, name);
-        println!("  父仓库指针: {}", sm.parent_pointer);
-        println!("  本地 HEAD:  {}", sm.local_head);
-        println!("  远程 HEAD:  {}", sm.remote_head);
-        println!("  状态: {:?}", sm.status);
-        if sm.status != SubmoduleStatus::Clean {
-            let (_, action) = describe_issue(&sm.status);
-            println!("  建议: {}", action);
-        }
-        Ok(())
-    }
 }
 
 #[cfg(test)]

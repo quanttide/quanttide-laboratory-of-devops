@@ -36,10 +36,12 @@ enum CodeAction {
         #[arg(default_value = ".")]
         path: PathBuf,
     },
-    /// 同步操作
+    /// 同步子模块指针到父仓库
     Sync {
-        #[command(subcommand)]
-        action: SyncAction,
+        /// 子模块名称（省略则同步全部）
+        name: Option<String>,
+        #[arg(default_value = ".")]
+        repo: PathBuf,
     },
     /// 退役子模块
     Retire {
@@ -68,24 +70,6 @@ enum CodeAction {
         format: String,
         #[arg(long = "output", short = 'o')]
         output: Option<PathBuf>,
-    },
-}
-
-#[derive(Subcommand)]
-enum SyncAction {
-    /// 子模块 → 父仓库：更新父仓库指针
-    Parent {
-        #[arg(default_value = ".")]
-        repo: PathBuf,
-        name: Option<String>,
-    },
-    /// 跨环境子模块版本对齐（CI 场景）
-    Platform {
-        name: String,
-        #[arg(long = "env", short = 'e', default_value = "production")]
-        env: String,
-        #[arg(default_value = ".")]
-        repo: PathBuf,
     },
 }
 
@@ -196,23 +180,8 @@ fn run_code(dry_run: bool, action: CodeAction) {
         }
 
         CodeAction::Sync {
-            action: SyncAction::Platform { repo, name, env },
-        } => {
-            let root = resolve_path(&repo);
-            if dry_run {
-                println!("[预览] 检查子模块 '{}' 在 {} 环境的版本", name, env);
-                return;
-            }
-            let editor = GitSubmoduleEditor::new(root);
-            exec(editor.sync_platform(&name, &env));
-        }
-
-        CodeAction::Sync {
-            action:
-                SyncAction::Parent {
-                    repo,
-                    name: Some(n),
-                },
+            name: Some(n),
+            repo,
         } => {
             let root = resolve_path(&repo);
             if dry_run {
@@ -223,9 +192,7 @@ fn run_code(dry_run: bool, action: CodeAction) {
             exec(editor.sync_to_parent(&n));
         }
 
-        CodeAction::Sync {
-            action: SyncAction::Parent { repo, name: None },
-        } => {
+        CodeAction::Sync { name: None, repo } => {
             let root = resolve_path(&repo);
             if dry_run {
                 println!("[预览] 同步所有子模块到父仓库");

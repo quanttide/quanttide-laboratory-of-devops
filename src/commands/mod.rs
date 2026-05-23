@@ -26,6 +26,4 @@ pub trait SubmoduleEditor {
     /// 核心贡献：三路 commit 比对 + 7 种状态分类
     fn status(&self) -> Result<Vec<HealthIssue>, Box<dyn std::error::Error>>;
 
-    /// 跨环境子模块版本对齐（CI 场景）
-    fn sync_platform(&self, name: &str, env: &str) -> Result<(), Box<dyn std::error::Error>>;
 }

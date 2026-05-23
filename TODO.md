@@ -76,7 +76,27 @@
 - [x] 系统依赖问题：需 `sudo apt install libsoup2.4-dev libwebkit2gtk-4.0-dev libgtk-3-dev`
 - [x] 提交 `c84ac97 fix: add package = "kse" to kse_core dependency in src-tauri Cargo.toml`
 
-## Iteration 7（已完成）
+## Iteration 8：PyO3 集成（已完成）
+
+### 8.1 crate 结构调整
+
+- [x] `[lib] crate-type = ["lib", "cdylib"]` — lib 同时输出 `.rlib` 和 `.so`
+- [x] `pyo3` 依赖（optional feature `python`）
+- [x] `serde_json = "1"` 依赖
+
+### 8.2 Python 绑定
+
+- [x] `src/python.rs` — 新建 `#[pymodule] kse_core`，导出 `scan_repo(path) -> dict`
+- [x] 条件编译 `#[cfg(feature = "python")]`
+- [x] 模型类型加 `#[derive(serde::Serialize)]`（CommitHash, SubmoduleStatus, Submodule, RepoState, AggregateStatus）
+- [x] `cargo build --features python` 编译通过
+
+### 8.3 待完成
+
+- [ ] PyO3 端到端调用验证（Python import kse_core 并调用 scan_repo）
+- [ ] maturin 包管理（创建 `pyproject.toml`）
+- [ ] 导出更多函数（checkout_all, sync_all, init_all, health_check）
+- [ ] 创建 `qtcloud-devops-cli` Python 包入口
 
 ### 7.1 用户指南文档
 

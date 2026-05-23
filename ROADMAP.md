@@ -2,7 +2,7 @@
 
 ## 全部完成
 
-所有 6 个迭代的开发工作已完成。剩余唯一条目需在有网络的环境中执行。
+所有 8 个迭代的开发工作已完成。剩余唯一条目需在有网络的环境中执行。
 
 | 迭代 | 提交 | 交付 |
 |------|------|------|
@@ -14,9 +14,10 @@
 | Iter 5 灰度与分发 | `47a0dd2` | --dry-run + export-ci + CHANGELOG + v1.0.0 |
 | Iter 6 规范合规 | `b6e4c8e` | Orphaned merge_base 检测 + remote_unreachable 离线降级 + AggregateStatus + scan_all |
 | 迭代间补齐 | 后 9 个提交 | 批量选择 UI、commit 差异数、URL 验证、重复添加检测、集成测试、日期筛选等 |
-| Iter 7 文档与发布 | `54a37da` | 完整用户指南 docs/user-guide.md（555 行）— 安装、所有 CLI 命令详解、Web UI 使用、CI 集成、工作流示例、故障排除 |
-| Iter 7 后续修复 | `e8bdfc8` | 用户指南评审修复：8 处 CLI 示例错误、新增项目简介/目录/系统要求/卸载指南/撤销风险提示 |
-| 实际验证 | — | 在 quanttide 主仓库（17 个子模块）上完成全流程验证：health-check → checkout-all → sync-all → git push，全部修复至 Clean |
+| Iter 7 文档与发布 | `54a37da` | 完整用户指南 docs/user-guide.md（555 行） |
+| Iter 7 后续修复 | `e8bdfc8` | 用户指南评审修复：8 处 CLI 示例错误 + 目录/系统要求/卸载 |
+| 实际验证 | — | quanttide 主仓库 17 子模块全流程验证 → 全部 Clean |
+| **Iter 8 PyO3 集成** | — | `crate-type = ["lib", "cdylib"]` + `pyo3` optional feature + 导出 `scan_repo` 供 Python 调用 |
 
 ## 所有已实现的 CLI 命令
 
@@ -38,6 +39,27 @@ kse export-ci [-f format] [-o file]    # 导出 CI 脚本
 # 所有变异命令支持 --dry-run 预览
 ```
 
+## Python 集成（Iter 8）
+
+KSE 核心逻辑（`kse_core` Rust lib）已可通过 PyO3 编译为 Python native module：
+
+```bash
+cargo build --features python
+# → target/debug/libkse_core.so
+```
+
+当前导出的 Python 函数：
+
+| 函数 | 类型 | 说明 |
+|------|:----:|------|
+| `scan_repo(path)` | dict | 扫描仓库，返回 RepoState 的 JSON 结构 |
+
+计划扩展：
+
+- `checkout_all(path, branch)` → 批量切换分支
+- `sync_all(path)` → 批量同步
+- `health_check(path)` → 返回健康问题列表
+
 ## 测试
 
 - 44 个单元测试（model / commands / editor / history / export）
@@ -47,13 +69,19 @@ kse export-ci [-f format] [-o file]    # 导出 CI 脚本
 
 | 任务 | 命令 | 状态 |
 |------|------|:----:|
-| 本地编译验证 | `cargo build && cargo test && cargo clippy -- -D warnings` | ⏳ |
-| CI 触发验证 | `git push origin main` | ⏳ |
-| Tauri 桌面应用启动 | `cargo tauri dev` | ❌ |
+| PyO3 端到端验证 | `python3 -c "import kse_core; print(kse_core.scan_repo('.'))"` | ⏳ |
+| Tauri 桌面应用启动 | `cargo tauri dev` | ❌ 缺系统依赖 |
 | Tauri 跨平台打包 | `cargo tauri build` | ❌ |
 | GitHub Release | `gh release create v1.0.0 ...` | ❌ |
 
 ## 未来规划
+
+### Python 端 qtcloud-devops CLI
+
+- [ ] 创建 `tools/qtcloud-devops-cli/` Python 包（uv managed）
+- [ ] 用 maturin 管理构建，`pip install` 时自动编译 kse_core
+- [ ] 实现 `qtcloud-devops code health-check`、`qtcloud-devops code sync-all` 等子命令
+- [ ] 与 GitHub Release 等 devops 工具链集成
 
 ### Tauri 桌面应用（从蓝图到实现）
 

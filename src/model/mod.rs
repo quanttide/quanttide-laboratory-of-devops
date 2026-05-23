@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct CommitHash(pub String);
 
 impl std::fmt::Display for CommitHash {
@@ -15,7 +15,7 @@ impl Default for CommitHash {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub enum SubmoduleStatus {
     Clean,
     AheadOfParent,
@@ -40,7 +40,7 @@ impl SubmoduleStatus {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct Submodule {
     pub name: String,
     pub path: PathBuf,
@@ -55,7 +55,7 @@ pub struct Submodule {
     pub remote_unreachable: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct RepoState {
     pub root_path: PathBuf,
     pub submodules: Vec<Submodule>,
@@ -258,7 +258,7 @@ impl RepoState {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct AggregateStatus {
     pub total: usize,
     pub clean: usize,

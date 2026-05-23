@@ -59,6 +59,7 @@ async function scan() {
     document.getElementById('stat-attention').textContent = attention;
 
     log(`扫描完成: ${submodules.length} 个子模块`);
+    loadHistory();
   } catch (err) {
     tbody.innerHTML = `<tr><td colspan="4" class="empty">错误: ${err}</td></tr>`;
     log(`扫描失败: ${err}`);
@@ -168,6 +169,23 @@ function actionButtons(name, status) {
   if (status === 'Dirty') btns += `<button class="btn-sm primary" onclick="updateOne('${name}')">提交</button>`;
   if (status !== 'Clean') btns += `<button class="btn-sm danger" onclick="retireOne('${name}')">退役</button>`;
   return btns;
+}
+
+async function loadHistory() {
+  if (!invoke) return;
+  const el = document.getElementById('history-list');
+  try {
+    const records = await invoke('list_history', { path: getRepoPath(), limit: 10, submodule: null });
+    if (records.length === 0) {
+      el.innerHTML = '<div class="msg">暂无操作记录</div>';
+    } else {
+      el.innerHTML = records.map(r =>
+        `<div class="msg">${r.success ? '✓' : '✗'} ${r.timestamp} ${r.action}: ${r.submodule_name}</div>`
+      ).join('');
+    }
+  } catch (e) {
+    el.innerHTML = `<div class="msg">加载历史失败: ${e}</div>`;
+  }
 }
 
 // Auto-scan on load with debounce

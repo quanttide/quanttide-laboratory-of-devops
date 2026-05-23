@@ -1,15 +1,32 @@
 use std::path::{Path, PathBuf};
 
+use crate::commands::history::{HistoryDb, OperationRecord};
 use crate::commands::{HealthIssue, SubmoduleEditor, UpdateStrategy};
 use crate::model::{RepoState, SubmoduleStatus};
 
 pub struct GitSubmoduleEditor {
     root: PathBuf,
+    history: HistoryDb,
 }
 
 impl GitSubmoduleEditor {
     pub fn new(root: PathBuf) -> Self {
-        Self { root }
+        let history = HistoryDb::open(&root).unwrap_or_else(|e| {
+            eprintln!("警告: 无法打开操作历史数据库: {}", e);
+            // Create an in-memory fallback
+            let db_dir = std::env::temp_dir().join("kse-history");
+            std::fs::create_dir_all(&db_dir).ok();
+            HistoryDb::open(&db_dir).expect("无法创建历史数据库")
+        });
+        Self { root, history }
+    }
+
+    fn log_ok(&self, action: &str, submodule: &str, detail: &str) {
+        self.history.log_operation(action, submodule, detail, true).ok();
+    }
+
+    fn log_err(&self, action: &str, submodule: &str, detail: &str) {
+        self.history.log_operation(action, submodule, detail, false).ok();
     }
 }
 
@@ -32,7 +49,9 @@ impl SubmoduleEditor for GitSubmoduleEditor {
         let mut sm = repo.submodule(url, Path::new(path), false)?;
         sm.add_finalize()?;
         sm.set_branch(branch)?;
-        println!("已添加子模块 '{}' (路径: {}, 分支: {})", sm.name().unwrap_or(path), path, branch);
+        let name = sm.name().unwrap_or(path);
+        self.log_ok("add", name, &format!("url={}, path={}, branch={}", url, path, branch));
+        println!("已添加子模块 '{}'", name);
         Ok(())
     }
 
@@ -45,6 +64,7 @@ impl SubmoduleEditor for GitSubmoduleEditor {
             if status.contains(git2::SubmoduleStatus::WD_UNINITIALIZED) {
                 sm.init(false)?;
                 let name = sm.name().unwrap_or("unknown");
+                self.log_ok("init", name, "初始化子模块");
                 println!("已初始化子模块 '{}'", name);
                 count += 1;
             }
@@ -66,9 +86,12 @@ impl SubmoduleEditor for GitSubmoduleEditor {
         let mut sm = repo.find_submodule(name)?;
         let status = sm.status(false)?;
         if status.contains(git2::SubmoduleStatus::WD_DIRTY) {
-            return Err(format!("子模块 '{}' 有未提交的修改，请先提交或 stash", name).into());
+            let msg = format!("子模块 '{}' 有未提交的修改，请先提交或 stash", name);
+            self.log_err("update", name, &msg);
+            return Err(msg.into());
         }
         sm.update(false, strategy.to_git2_update())?;
+        self.log_ok("update", name, &format!("strategy={:?}", strategy));
         println!("已更新子模块 '{}'", name);
         Ok(())
     }
@@ -110,6 +133,7 @@ impl SubmoduleEditor for GitSubmoduleEditor {
             &tree,
             &[&parent],
         )?;
+        self.log_ok("sync", name, "同步到父仓库");
         println!("已同步子模块 '{}' 到父仓库", name);
         Ok(())
     }
@@ -137,6 +161,7 @@ impl SubmoduleEditor for GitSubmoduleEditor {
         let obj = sm_repo.revparse_single(&ref_name)?;
         sm_repo.checkout_tree(&obj, None)?;
         sm_repo.set_head(&ref_name)?;
+        self.log_ok("checkout", name, &format!("切换到分支 {}", branch));
         println!("子模块 '{}' 已切换到分支 '{}'", name, branch);
         Ok(())
     }
@@ -153,19 +178,21 @@ impl SubmoduleEditor for GitSubmoduleEditor {
 
         let ref_name = format!("refs/heads/{}", branch);
         sm_repo.set_head(&ref_name)?;
+        self.log_ok("branch", name, &format!("创建并切换到分支 {}", branch));
         println!("子模块 '{}' 已创建并切换到分支 '{}'", name, branch);
         Ok(())
     }
 
     fn retire_submodule(&self, name: &str) -> Result<(), Box<dyn std::error::Error>> {
         let repo = git2::Repository::open(&self.root)?;
+        let sm = repo.find_submodule(name)?;
+        let url = sm.url().unwrap_or("").to_string();
+        let sm_path = sm.path().to_path_buf();
         let mut sm = repo.find_submodule(name)?;
         sm.deinit(true)?;
-        // Remove from .gitmodules
-        let sm_path = sm.path().to_path_buf();
+
         let gitmodules_path = self.root.join(".gitmodules");
         if gitmodules_path.exists() {
-            // Read .gitmodules, remove the section matching this submodule
             let content = std::fs::read_to_string(&gitmodules_path)?;
             let mut new_content = String::new();
             let mut skip = false;
@@ -186,12 +213,21 @@ impl SubmoduleEditor for GitSubmoduleEditor {
             }
             std::fs::write(&gitmodules_path, new_content)?;
         }
-        // Remove from index
         let mut index = repo.index()?;
         index.remove_path(&sm_path)?;
         index.write()?;
+
+        self.history.log_retire(name, &url, &sm_path.display().to_string(), "用户手动退役")?;
         println!("已退役子模块 '{}'", name);
         Ok(())
+    }
+
+    pub fn list_history(
+        &self,
+        limit: usize,
+        submodule: Option<&str>,
+    ) -> Result<Vec<OperationRecord>, Box<dyn std::error::Error>> {
+        self.history.list_operations(limit, submodule)
     }
 
     fn health_check(&self) -> Result<Vec<HealthIssue>, Box<dyn std::error::Error>> {

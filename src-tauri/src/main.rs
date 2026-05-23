@@ -105,6 +105,26 @@ fn retire_submodule(repo: String, name: String) -> Result<String, String> {
     Ok(format!("已退役子模块 '{}'", name))
 }
 
+#[tauri::command]
+fn list_history(path: String, limit: usize, submodule: Option<String>) -> Result<Vec<HistoryRecord>, String> {
+    let root = PathBuf::from(&path);
+    let editor = GitSubmoduleEditor::new(root);
+    let records = editor
+        .list_history(limit, submodule.as_deref())
+        .map_err(|e| format!("查询历史失败: {}", e))?;
+    Ok(records
+        .into_iter()
+        .map(|r| HistoryRecord {
+            id: r.id,
+            timestamp: r.timestamp,
+            action: r.action,
+            submodule_name: r.submodule_name,
+            detail: r.detail,
+            success: r.success,
+        })
+        .collect())
+}
+
 fn parse_strategy(s: &str) -> Result<UpdateStrategy, String> {
     match s.to_lowercase().replace("-", "_").as_str() {
         "fastforward" | "ff" | "fast_forward" => Ok(UpdateStrategy::FastForward),
@@ -130,6 +150,16 @@ struct SubmoduleInfo {
 }
 
 #[derive(serde::Serialize)]
+struct HistoryRecord {
+    id: i64,
+    timestamp: String,
+    action: String,
+    submodule_name: String,
+    detail: String,
+    success: bool,
+}
+
+#[derive(serde::Serialize)]
 struct IssueInfo {
     submodule_name: String,
     status: String,
@@ -148,6 +178,7 @@ fn main() {
             sync_to_parent,
             sync_all_to_parent,
             retire_submodule,
+            list_history,
         ])
         .run(tauri::generate_context!())
         .expect("启动 KSE 失败");

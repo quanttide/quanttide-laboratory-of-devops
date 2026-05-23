@@ -172,34 +172,34 @@
 
 ### 4.1 SQLite schema
 
-- [ ] 设计 `operations` 表（id / time / action / submodule_name / detail / success）
-- [ ] 设计 `retired_submodules` 表（name / url / path / retired_at / reason / retired_by）
-- [ ] 使用 `rusqlite` 或 `sqlx` 实现数据库初始化
+- [x] 设计 `operations` 表（id / time / action / submodule_name / detail / success）
+- [x] 设计 `retired_submodules` 表（name / url / path / retired_at / reason）
+- [x] 使用 `rusqlite`（bundled）实现数据库初始化
 
 ### 4.2 操作历史记录
 
-- [ ] 每个原子操作后写入 `operations` 表
-- [ ] `kse history` CLI 命令列出最近操作（支持 `--limit`、`--submodule`）
-- [ ] UI 操作历史面板
+- [x] 每个原子操作后写入 `operations` 表（通过 `GitSubmoduleEditor` 自动记录）
+- [x] `kse history` CLI 命令列出最近操作（支持 `--limit`、`--submodule`）
+- [x] UI 操作历史面板
 
 ### 4.3 异常状态修复引导
 
-- [ ] Detached：检测游离 HEAD → 建议 checkout 到跟踪分支 → "修复"按钮
-- [ ] Dirty：显示未提交文件列表 → 引导提交或 stash → "修复"按钮
-- [ ] UI 中修复按钮联动操作
+- [x] Detached：检测游离 HEAD → 状态标记 → 建议 checkout（已在前端 health_check 实现）
+- [x] Dirty：检测未提交修改 → 阻止更新 → 引导提交或 stash
+- [ ] UI 中修复按钮联动操作（待完善）
 
 ### 4.4 Orphaned 告警
 
-- [ ] 检测 parent_pointer 在远程已不存在
-- [ ] 红色高亮标记 + 告警提示
-- [ ] 建议操作引导（手动干预）
+- [ ] 检测 parent_pointer 在远程已不存在（待实现完整远程检测）
+- [x] 红色高亮标记 + 告警提示（前端 health_check issue 面板）
+- [x] 建议操作引导（手动干预）
 
 ### 4.5 操作历史 UI
 
-- [ ] 历史列表展示（时间 / 操作 / 子模块 / 结果）
-- [ ] 按时间范围筛选
-- [ ] 按子模块名称筛选
-- [ ] 撤销指引（提示用户使用 `git reflog`）
+- [x] 历史记录显示在侧边栏（时间 / 操作 / 子模块 / 结果）
+- [ ] 按时间范围筛选（待完善）
+- [x] 按子模块名称筛选（CLI 支持）
+- [ ] 撤销指引（提示用户使用 `git reflog`）（待完善）
 
 **验证**：`cargo test` + UI 手动测试
 

@@ -101,6 +101,18 @@ enum Commands {
         #[arg(default_value = ".")]
         repo: PathBuf,
     },
+    /// 查看操作历史
+    History {
+        /// 仓库根目录路径
+        #[arg(default_value = ".")]
+        path: PathBuf,
+        /// 显示条数
+        #[arg(default_value = "20", long = "limit", short = 'n')]
+        limit: usize,
+        /// 按子模块名称筛选
+        #[arg(long = "submodule", short = 'm')]
+        submodule: Option<String>,
+    },
 }
 
 fn parse_strategy(s: &str) -> Result<UpdateStrategy, String> {
@@ -239,6 +251,34 @@ fn main() {
             let root = resolve_path(&repo);
             let editor = GitSubmoduleEditor::new(root);
             exec(editor.retire_submodule(&name));
+        }
+        Commands::History {
+            path,
+            limit,
+            submodule,
+        } => {
+            let root = resolve_path(&path);
+            let editor = GitSubmoduleEditor::new(root.clone());
+            match editor.list_history(limit, submodule.as_deref()) {
+                Ok(records) => {
+                    if records.is_empty() {
+                        println!("没有操作历史记录");
+                    } else {
+                        println!("最近 {} 条操作记录:\n", records.len());
+                        for r in &records {
+                            let icon = if r.success { "✓" } else { "✗" };
+                            println!(
+                                "  {} [{}] {}: {} ({})",
+                                icon, r.timestamp, r.action, r.submodule_name, r.detail
+                            );
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("错误: {}", e);
+                    process::exit(1);
+                }
+            }
         }
     }
 }

@@ -63,6 +63,11 @@ impl SubmoduleEditor for GitSubmoduleEditor {
             return Err(format!("路径已存在: {}", path).into());
         }
 
+        // 验证 URL 可达性（通过 git ls-remote）
+        if let Err(msg) = validate_git_url(url) {
+            return Err(format!("URL 不可达: {} — {}", url, msg).into());
+        }
+
         let mut sm = repo.submodule(url, Path::new(path), false)?;
         sm.add_finalize()?;
         sm.set_branch(branch)?;
@@ -347,6 +352,41 @@ mod tests {
     #[should_panic(expected = "unreachable")]
     fn test_describe_issue_clean_panics() {
         describe_issue(&SubmoduleStatus::Clean);
+    }
+}
+
+/// 通过 `git ls-remote <url> HEAD` 验证 URL 是可达的 Git 仓库
+pub(crate) fn validate_git_url(url: &str) -> Result<(), String> {
+    let output = std::process::Command::new("git")
+        .args(["ls-remote", url, "HEAD"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .output()
+        .map_err(|e| format!("无法执行 git: {}", e))?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let first_line = stderr.lines().next().unwrap_or("未知错误").trim();
+        Err(first_line.to_string())
+    }
+}
+
+#[cfg(test)]
+mod validate_tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_url_empty() {
+        let result = validate_git_url("");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_url_malformed() {
+        let result = validate_git_url("not-a-url");
+        assert!(result.is_err());
     }
 }
 

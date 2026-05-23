@@ -161,6 +161,26 @@ fn test_add_duplicate_path() {
 
 #[test]
 #[ignore]
+fn test_add_with_invalid_url_fails() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (_, parent_path) = setup_repo_pair(&tmp);
+    let editor = GitSubmoduleEditor::new(parent_path);
+    let result = editor.add_submodule("https://invalid-url-xyz.local/repo.git", "lib-bad", "main");
+    assert!(result.is_err(), "invalid URL should be rejected");
+}
+
+#[test]
+#[ignore]
+fn test_add_with_empty_url_fails() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (_, parent_path) = setup_repo_pair(&tmp);
+    let editor = GitSubmoduleEditor::new(parent_path);
+    let result = editor.add_submodule("", "lib-empty", "main");
+    assert!(result.is_err(), "empty URL should be rejected");
+}
+
+#[test]
+#[ignore]
 fn test_update_single_clean() {
     let tmp = tempfile::tempdir().unwrap();
     let (remote_path, parent_path) = setup_repo_pair(&tmp);

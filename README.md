@@ -1,6 +1,10 @@
-# quanttide-example-of-devops — KSE (Git Submodule Editor)
+# [已废弃] quanttide-example-of-devops — KSE (Git Submodule Editor)
 
-量潮DevOps实验室 — 多仓库项目的子模块可视化工具。
+> **此仓库已废弃**，Rust 核心代码已迁移至 `apps/qtcloud-devops/src/cli/packages/code/`。
+> 请使用 `qtcloud-devops code` 子命令替代 `kse` CLI。
+> 迁移后安装：`pip install -e apps/qtcloud-devops/src/cli/packages/code`
+
+量潮DevOps实验室 — 多仓库项目的子模块可视化工具（已存档）。
 
 ## 安装
 

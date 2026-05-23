@@ -1,4 +1,7 @@
-# Git Submodule 专用编辑器 — 迭代计划
+# [已废弃] Git Submodule 专用编辑器 — 迭代计划
+
+> 此项目已迁移至 `apps/qtcloud-devops/src/cli/packages/code/`，通过 `qtcloud-devops code` 子命令使用。
+> 本文件仅作存档。
 
 ## 已完成迭代
 

@@ -74,9 +74,7 @@ Iter 0 ── Iter 1 ── Iter 2 ── Iter 3 ── Iter 4 ── Iter 5 ─
 0.5w       2w        2w        2w        2w        2w        按需
 ```
 
-**Iteration 6 剩余工作**：
-1. `Submodule.remote_unreachable: bool` + 离线判定降级
-2. `AggregateStatus` 结构体 + `scan_all()`
-3. CLI/Tauri/UI 输出聚合统计 + 离线标记
+**Iteration 6 已完成**（`b6e4c8e`）。剩余唯一条目：
+- 2.1 URL 可达性验证（低优先级，需网络请求）
 
 详细开发蓝图见 [docs/dev.md](docs/dev.md)。

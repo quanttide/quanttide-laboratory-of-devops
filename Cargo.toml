@@ -1,17 +1,17 @@
 [package]
-name = "kse"
-version = "2.0.0"
+name = "qtcloud-devops-code"
+version = "0.1.0"
 edition = "2021"
-description = "qtcloud-devops — 量潮DevOps实验室 CLI"
+description = "量潮DevOps云命令行工具Rust核心"
 authors = ["Guo-Zhang <zhangguo@quanttide.com>"]
 
 [lib]
-name = "kse_core"
+name = "qtcloud_devops_code"
 path = "src/lib.rs"
-crate-type = ["lib", "cdylib"]
+crate-type = ["cdylib", "lib"]
 
 [[bin]]
-name = "qtcloud-devops"
+name = "qtcloud-devops-code"
 path = "src/main.rs"
 
 [dependencies]
@@ -20,11 +20,11 @@ clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
-pyo3 = { version = "0.23", features = ["extension-module"], optional = true }
-
-[features]
-default = []
-python = ["pyo3"]
+pyo3 = { version = "0.23", features = ["extension-module"] }
 
 [dev-dependencies]
 tempfile = "3"
+
+[features]
+cli = []
+# Python 绑定为默认启用，cli 模式可单独指定 --no-default-features --features cli 以减小体积

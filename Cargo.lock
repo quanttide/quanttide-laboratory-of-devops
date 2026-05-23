@@ -402,18 +402,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "kse"
-version = "2.0.0"
-dependencies = [
- "clap",
- "git2",
- "pyo3",
- "serde",
- "serde_json",
- "tempfile",
-]
-
-[[package]]
 name = "leb128fmt"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -635,6 +623,18 @@ dependencies = [
  "pyo3-build-config",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "qtcloud-devops-code"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "git2",
+ "pyo3",
+ "serde",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]

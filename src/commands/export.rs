@@ -39,7 +39,7 @@ fn generate_shell_script(_all: &[Submodule], needs_update: &[&Submodule]) -> Str
             ));
         }
         s.push_str("\n# 同步到父仓库\n");
-        s.push_str("kse sync parent --all\n");
+        s.push_str("qtcloud-devops code sync parent --all\n");
     }
     s
 }
@@ -64,10 +64,10 @@ fn generate_github_actions(_all: &[Submodule], needs_update: &[&Submodule]) -> S
             ));
         }
         s.push_str("      - name: Sync to parent\n");
-        s.push_str("        run: ./target/release/kse sync parent --all\n");
+        s.push_str("        run: ./target/release/qtcloud-devops code sync parent --all\n");
     } else {
         s.push_str("      - name: Check status\n");
-        s.push_str("        run: ./target/release/kse status\n");
+        s.push_str("        run: ./target/release/qtcloud-devops code status\n");
     }
     s
 }
@@ -86,7 +86,7 @@ fn generate_gitlab_ci(_all: &[Submodule], needs_update: &[&Submodule]) -> String
                 sm.name
             ));
         }
-        s.push_str("    - ./target/release/kse sync parent --all\n");
+        s.push_str("    - ./target/release/qtcloud-devops code sync parent --all\n");
     }
     s.push_str("  only:\n    - schedules\n");
     s

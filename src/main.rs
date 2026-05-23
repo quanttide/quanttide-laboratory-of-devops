@@ -8,25 +8,35 @@ use std::process;
 
 #[derive(Parser)]
 #[command(
-    name = "kse",
-    about = "Git Submodule 专用编辑器 — 多仓库项目的子模块可视化工具"
+    name = "qtcloud-devops",
+    about = "量潮DevOps实验室 — Git 子模块管理工具",
+    version
 )]
 struct Cli {
-    #[arg(global = true, long = "dry-run")]
-    dry_run: bool,
-
     #[command(subcommand)]
     command: Commands,
 }
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Git 子模块管理命令集
+    Code {
+        #[arg(global = true, long = "dry-run")]
+        dry_run: bool,
+
+        #[command(subcommand)]
+        action: CodeAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum CodeAction {
     /// 扫描并展示仓库所有子模块的状态
     Status {
         #[arg(default_value = ".")]
         path: PathBuf,
     },
-    /// 同步子模块指针到父仓库（核心贡献）
+    /// 同步操作
     Sync {
         #[command(subcommand)]
         action: SyncAction,
@@ -124,10 +134,17 @@ fn print_aggregate(state: &model::RepoState) {
 
 fn main() {
     let cli = Cli::parse();
-    let dry_run = cli.dry_run;
 
     match cli.command {
-        Commands::Status { path } => {
+        Commands::Code { dry_run, action } => {
+            run_code(dry_run, action);
+        }
+    }
+}
+
+fn run_code(dry_run: bool, action: CodeAction) {
+    match action {
+        CodeAction::Status { path } => {
             let root = resolve_path(&path);
             let editor = GitSubmoduleEditor::new(root.clone());
             let state = model::RepoState::scan(&root).unwrap_or_else(|e| {
@@ -178,7 +195,7 @@ fn main() {
             print_issues(&issues);
         }
 
-        Commands::Sync {
+        CodeAction::Sync {
             action: SyncAction::Platform { repo, name, env },
         } => {
             let root = resolve_path(&repo);
@@ -189,12 +206,12 @@ fn main() {
             let editor = GitSubmoduleEditor::new(root);
             exec(editor.sync_platform(&name, &env));
         }
-        Commands::Sync {
+
+        CodeAction::Sync {
             action:
                 SyncAction::Parent {
                     repo,
                     name: Some(n),
-                    ..
                 },
         } => {
             let root = resolve_path(&repo);
@@ -205,8 +222,9 @@ fn main() {
             let editor = GitSubmoduleEditor::new(root);
             exec(editor.sync_to_parent(&n));
         }
-        Commands::Sync {
-            action: SyncAction::Parent { repo, .. },
+
+        CodeAction::Sync {
+            action: SyncAction::Parent { repo, name: None },
         } => {
             let root = resolve_path(&repo);
             if dry_run {
@@ -217,7 +235,7 @@ fn main() {
             exec(editor.sync_all_to_parent());
         }
 
-        Commands::Retire { name, repo } => {
+        CodeAction::Retire { name, repo } => {
             let root = resolve_path(&repo);
             if dry_run {
                 println!("[预览] 退役子模块 '{}'", name);
@@ -227,7 +245,7 @@ fn main() {
             exec(editor.retire_submodule(&name));
         }
 
-        Commands::History {
+        CodeAction::History {
             path,
             limit,
             submodule,
@@ -263,7 +281,7 @@ fn main() {
             }
         }
 
-        Commands::ExportCi {
+        CodeAction::ExportCi {
             path,
             format,
             output,

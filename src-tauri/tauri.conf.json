@@ -6,7 +6,7 @@
     "beforeBuildCommand": ""
   },
   "package": {
-    "productName": "KSE",
+    "productName": "qtcloud-devops",
     "version": "0.1.0"
   },
   "tauri": {
@@ -36,7 +36,7 @@
       {
         "fullscreen": false,
         "resizable": true,
-        "title": "KSE — Git Submodule Editor",
+        "title": "qtcloud-devops — Git Submodule Editor",
         "width": 1024,
         "height": 720,
         "minWidth": 800,

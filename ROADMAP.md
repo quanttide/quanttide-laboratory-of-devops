@@ -78,13 +78,13 @@ std::process::Command::new("git")
 ### 9.5 清理后 CLI 命令集
 
 ```
-kse status [path]                     # 👈 重命名，唯一入口
-kse sync parent <name> [--all]        # 👈 核心贡献
-kse sync platform <name> --env <env>  # 👈 新增
-kse retire <name>                     # 👈 保留
-kse history [--limit] [--submodule] [--start] [--end]  # 👈 保留
-kse export-ci [-f format] [-o file]   # 👈 保留
-# 所有命令支持 --dry-run
+qtcloud-devops code status [path]                    # 扫描状态 + 聚合统计（核心贡献）
+qtcloud-devops code sync parent [name]               # 子模块 → 父仓库指针同步（核心贡献）
+qtcloud-devops code sync platform <name> --env <env> # 跨环境版本对齐（CI 场景）
+qtcloud-devops code retire <name>                    # 退役子模块
+qtcloud-devops code history [...]                    # 操作历史
+qtcloud-devops code export-ci [...]                  # 导出 CI 脚本
+# 所有命令支持 --dry-run 预览
 ```
 
 从 14 个子命令精简为 6 个子命令，全部指向核心贡献。

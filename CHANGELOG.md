@@ -2,6 +2,12 @@
 
 ## [2.0.0] — 2026-05-24
 
+### 重命名
+
+- CLI 从 `kse` 重命名为 `qtcloud-devops code`
+- 所有命令从 `kse <cmd>` 变为 `qtcloud-devops code <cmd>`
+- 二进制文件从 `kse` 改为 `qtcloud-devops`
+
 ### 破坏性变更
 
 - **移除 8 个纯 git 包装命令**：`add`、`init`、`update`、`update-all`、`checkout`、`branch`、`checkout-all`、`branch-all`

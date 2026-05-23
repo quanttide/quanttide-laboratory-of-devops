@@ -1,8 +1,8 @@
 [package]
 name = "kse"
-version = "1.0.0"
+version = "2.0.0"
 edition = "2021"
-description = "Git Submodule 专用编辑器 — 多仓库项目的子模块可视化工具"
+description = "qtcloud-devops — 量潮DevOps实验室 CLI"
 authors = ["iGuo <iGuo19961110@gmail.com>"]
 
 [lib]
@@ -11,7 +11,7 @@ path = "src/lib.rs"
 crate-type = ["lib", "cdylib"]
 
 [[bin]]
-name = "kse"
+name = "qtcloud-devops"
 path = "src/main.rs"
 
 [dependencies]

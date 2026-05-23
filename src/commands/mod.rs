@@ -2,7 +2,6 @@ use crate::model::SubmoduleStatus;
 use std::path::Path;
 
 pub mod editor;
-pub mod history;
 
 #[derive(Debug, Clone)]
 pub struct HealthIssue {

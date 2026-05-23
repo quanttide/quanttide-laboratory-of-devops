@@ -136,21 +136,6 @@ fn test_retire_submodule() {
     assert_eq!(RepoState::scan(&parent_path).unwrap().total, 0);
 }
 
-#[test]
-#[ignore]
-fn test_history_db_created() {
-    let tmp = tempfile::tempdir().unwrap();
-    let (remote_path, parent_path) = setup_repo_pair(&tmp);
-    let parent = add_submodule_via_git(&parent_path, &remote_path, "lib-h4");
-    let editor = GitSubmoduleEditor::new(parent);
-    editor.sync_to_parent("lib-h4").ok();
-    let db_path = parent_path.join(".git").join("kse").join("history.db");
-    assert!(
-        db_path.exists(),
-        "history.db should exist after editor init"
-    );
-}
-
 fn setup_repo_pair(tmp: &tempfile::TempDir) -> (PathBuf, PathBuf) {
     let remote_path = tmp.path().join("remote");
     init_repo(&remote_path);

@@ -48,19 +48,6 @@ enum CodeAction {
         #[arg(default_value = ".")]
         repo: PathBuf,
     },
-    /// 查看操作历史
-    History {
-        #[arg(default_value = ".")]
-        path: PathBuf,
-        #[arg(default_value = "20", long = "limit", short = 'n')]
-        limit: usize,
-        #[arg(long = "submodule", short = 'm')]
-        submodule: Option<String>,
-        #[arg(long = "start")]
-        start: Option<String>,
-        #[arg(long = "end")]
-        end: Option<String>,
-    },
 }
 
 fn resolve_path(path: &PathBuf) -> PathBuf {
@@ -200,42 +187,6 @@ fn run_code(dry_run: bool, action: CodeAction) {
             }
             let editor = GitSubmoduleEditor::new(root);
             exec(editor.retire_submodule(&name));
-        }
-
-        CodeAction::History {
-            path,
-            limit,
-            submodule,
-            start,
-            end,
-        } => {
-            let root = resolve_path(&path);
-            let editor = GitSubmoduleEditor::new(root);
-            match editor.list_history(
-                limit,
-                submodule.as_deref(),
-                start.as_deref(),
-                end.as_deref(),
-            ) {
-                Ok(records) => {
-                    if records.is_empty() {
-                        println!("没有操作历史记录");
-                    } else {
-                        println!("最近 {} 条操作记录:\n", records.len());
-                        for r in &records {
-                            let icon = if r.success { "✓" } else { "✗" };
-                            println!(
-                                "  {} [{}] {}: {} ({})",
-                                icon, r.timestamp, r.action, r.submodule_name, r.detail
-                            );
-                        }
-                    }
-                }
-                Err(e) => {
-                    eprintln!("错误: {}", e);
-                    process::exit(1);
-                }
-            }
         }
 
     }

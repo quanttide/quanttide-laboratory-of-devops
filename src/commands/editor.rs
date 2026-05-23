@@ -1,43 +1,15 @@
 use std::path::{Path, PathBuf};
 
-use crate::commands::history::{HistoryDb, OperationRecord};
 use crate::commands::{HealthIssue, SubmoduleEditor};
 use crate::model::{RepoState, SubmoduleStatus};
 
 pub struct GitSubmoduleEditor {
     root: PathBuf,
-    history: HistoryDb,
 }
 
 impl GitSubmoduleEditor {
     pub fn new(root: PathBuf) -> Self {
-        let history = HistoryDb::open(&root).unwrap_or_else(|e| {
-            eprintln!("警告: 无法打开操作历史数据库: {}", e);
-            let db_dir = std::env::temp_dir().join("kse-history");
-            std::fs::create_dir_all(&db_dir).ok();
-            HistoryDb::open(&db_dir).unwrap_or_else(|e2| {
-                eprintln!("警告: 也无法创建临时历史数据库: {} — 操作历史将不可用", e2);
-                HistoryDb::open_in_memory(root.clone())
-            })
-        });
-        Self { root, history }
-    }
-
-    pub(crate) fn log_ok(&self, action: &str, submodule: &str, detail: &str) {
-        self.history
-            .log_operation(action, submodule, detail, true)
-            .ok();
-    }
-
-    pub fn list_history(
-        &self,
-        limit: usize,
-        submodule: Option<&str>,
-        start_date: Option<&str>,
-        end_date: Option<&str>,
-    ) -> Result<Vec<OperationRecord>, Box<dyn std::error::Error>> {
-        self.history
-            .list_operations(limit, submodule, start_date, end_date)
+        Self { root }
     }
 }
 
@@ -68,7 +40,6 @@ impl SubmoduleEditor for GitSubmoduleEditor {
             &tree,
             &[&parent],
         )?;
-        self.log_ok("sync", name, "同步到父仓库");
         println!("已同步子模块 '{}' 到父仓库", name);
         Ok(())
     }
@@ -89,7 +60,6 @@ impl SubmoduleEditor for GitSubmoduleEditor {
     fn retire_submodule(&self, name: &str) -> Result<(), Box<dyn std::error::Error>> {
         let repo = git2::Repository::open(&self.root)?;
         let sm = repo.find_submodule(name)?;
-        let url = sm.url().unwrap_or("").to_string();
         let sm_path = sm.path().to_path_buf();
 
         let result = std::process::Command::new("git")
@@ -100,10 +70,7 @@ impl SubmoduleEditor for GitSubmoduleEditor {
             Err(e) => eprintln!("警告: git submodule deinit 无法执行: {} (继续处理)", e),
             Ok(out) if !out.status.success() => {
                 let stderr = String::from_utf8_lossy(&out.stderr);
-                eprintln!(
-                    "警告: git submodule deinit 失败: {} (继续处理)",
-                    stderr.trim()
-                );
+                eprintln!("警告: git submodule deinit 失败: {} (继续处理)", stderr.trim());
             }
             _ => {}
         }
@@ -133,8 +100,6 @@ impl SubmoduleEditor for GitSubmoduleEditor {
         index.remove_path(&sm_path)?;
         index.write()?;
 
-        self.history
-            .log_retire(name, &url, &sm_path.display().to_string(), "用户手动退役")?;
         println!("已退役子模块 '{}'", name);
         Ok(())
     }
@@ -155,7 +120,6 @@ impl SubmoduleEditor for GitSubmoduleEditor {
         }
         Ok(issues)
     }
-
 }
 
 #[cfg(test)]

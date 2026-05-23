@@ -181,6 +181,21 @@ impl SubmoduleEditor for GitSubmoduleEditor {
         Ok(())
     }
 
+    fn checkout_all(&self, branch: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let repo = git2::Repository::open(&self.root)?;
+        let submodules = repo.submodules()?;
+        let mut count = 0;
+        for sm in &submodules {
+            let name = sm.name().unwrap_or("unknown").to_string();
+            match self.checkout_branch(&name, branch) {
+                Ok(()) => count += 1,
+                Err(e) => eprintln!("警告: 切换子模块 '{}' 失败: {}", name, e),
+            }
+        }
+        println!("共切换 {} 个子模块到分支 '{}'", count, branch);
+        Ok(())
+    }
+
     fn create_branch(&self, name: &str, branch: &str) -> Result<(), Box<dyn std::error::Error>> {
         let repo = git2::Repository::open(&self.root)?;
         let sm = repo.find_submodule(name)?;
@@ -195,6 +210,21 @@ impl SubmoduleEditor for GitSubmoduleEditor {
         sm_repo.set_head(&ref_name)?;
         self.log_ok("branch", name, &format!("创建并切换到分支 {}", branch));
         println!("子模块 '{}' 已创建并切换到分支 '{}'", name, branch);
+        Ok(())
+    }
+
+    fn branch_all(&self, branch: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let repo = git2::Repository::open(&self.root)?;
+        let submodules = repo.submodules()?;
+        let mut count = 0;
+        for sm in &submodules {
+            let name = sm.name().unwrap_or("unknown").to_string();
+            match self.create_branch(&name, branch) {
+                Ok(()) => count += 1,
+                Err(e) => eprintln!("警告: 在子模块 '{}' 创建分支失败: {}", name, e),
+            }
+        }
+        println!("共在 {} 个子模块中创建分支 '{}'", count, branch);
         Ok(())
     }
 

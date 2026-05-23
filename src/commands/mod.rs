@@ -48,7 +48,9 @@ pub trait SubmoduleEditor {
     fn sync_to_parent(&self, name: &str) -> Result<(), Box<dyn std::error::Error>>;
     fn sync_all_to_parent(&self) -> Result<(), Box<dyn std::error::Error>>;
     fn checkout_branch(&self, name: &str, branch: &str) -> Result<(), Box<dyn std::error::Error>>;
+    fn checkout_all(&self, branch: &str) -> Result<(), Box<dyn std::error::Error>>;
     fn create_branch(&self, name: &str, branch: &str) -> Result<(), Box<dyn std::error::Error>>;
+    fn branch_all(&self, branch: &str) -> Result<(), Box<dyn std::error::Error>>;
     fn retire_submodule(&self, name: &str) -> Result<(), Box<dyn std::error::Error>>;
     fn health_check(&self) -> Result<Vec<HealthIssue>, Box<dyn std::error::Error>>;
 }

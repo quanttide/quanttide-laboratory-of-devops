@@ -84,6 +84,18 @@ enum Commands {
         #[arg(default_value = ".")]
         repo: PathBuf,
     },
+    /// 将所有子模块切换到指定分支
+    CheckoutAll {
+        branch: String,
+        #[arg(default_value = ".")]
+        path: PathBuf,
+    },
+    /// 在所有子模块中创建并切换到新分支
+    BranchAll {
+        branch: String,
+        #[arg(default_value = ".")]
+        path: PathBuf,
+    },
     /// 查看操作历史
     History {
         #[arg(default_value = ".")]
@@ -317,6 +329,24 @@ fn main() {
                     process::exit(1);
                 }
             }
+        }
+        Commands::CheckoutAll { branch, path } => {
+            let root = resolve_path(&path);
+            if dry_run {
+                println!("[预览] 将所有子模块切换到分支 '{}'", branch);
+                return;
+            }
+            let editor = GitSubmoduleEditor::new(root);
+            exec(editor.checkout_all(&branch));
+        }
+        Commands::BranchAll { branch, path } => {
+            let root = resolve_path(&path);
+            if dry_run {
+                println!("[预览] 在所有子模块中创建分支 '{}'", branch);
+                return;
+            }
+            let editor = GitSubmoduleEditor::new(root);
+            exec(editor.branch_all(&branch));
         }
         Commands::ExportCi {
             path,

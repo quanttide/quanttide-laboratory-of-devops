@@ -109,6 +109,22 @@ fn retire_submodule(repo: String, name: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+fn checkout_all(path: String, branch: String) -> Result<String, String> {
+    let root = PathBuf::from(&path);
+    let editor = GitSubmoduleEditor::new(root);
+    editor.checkout_all(&branch).map_err(|e| format!("批量切换失败: {}", e))?;
+    Ok(format!("已切换所有子模块到分支 '{}'", branch))
+}
+
+#[tauri::command]
+fn branch_all(path: String, branch: String) -> Result<String, String> {
+    let root = PathBuf::from(&path);
+    let editor = GitSubmoduleEditor::new(root);
+    editor.branch_all(&branch).map_err(|e| format!("批量创建分支失败: {}", e))?;
+    Ok(format!("已创建分支 '{}' 到所有子模块", branch))
+}
+
+#[tauri::command]
 fn export_ci(path: String, format: String) -> Result<String, String> {
     let root = PathBuf::from(&path);
     let state = RepoState::scan(&root).map_err(|e| format!("扫描失败: {}", e))?;
@@ -192,6 +208,8 @@ fn main() {
             retire_submodule,
             list_history,
             export_ci,
+            checkout_all,
+            branch_all,
         ])
         .run(tauri::generate_context!())
         .expect("启动 KSE 失败");

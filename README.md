@@ -31,6 +31,28 @@ cargo tauri dev     # 开发模式
 cargo tauri build   # 构建安装包
 ```
 
+## 撤销操作
+
+KSE 的每个原子操作都通过 Git 的 reflog 记录，可以通过以下方式撤销：
+
+```bash
+# 查看父仓库 reflog
+git reflog
+
+# 恢复到操作前的状态
+git reset --hard HEAD@{1}
+```
+
+对于子模块内部的操作：
+
+```bash
+cd <子模块路径>
+git reflog
+git reset --hard HEAD@{1}
+```
+
+> 建议在操作前确保工作区干净（无未提交修改），以便可以安全地通过 `git reset --hard` 回退。
+
 ## 使用
 
 ### 健康检查

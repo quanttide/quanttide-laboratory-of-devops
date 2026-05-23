@@ -1,6 +1,31 @@
 # KSE 用户指南
 
+KSE（Kernel Submodule Editor）是一个面向多仓库项目的 Git 子模块管理工具。它提供 CLI 和可选的 Tauri 桌面应用，帮助开发者高效管理大量子模块的状态查看、批量更新、分支切换、同步提交等日常操作。核心设计理念：**原子命令、状态驱动、幂等操作**。
+
+> 🌟 适合场景：多子模块 monorepo、微服务仓库、平台工程团队。
+
+## 目录
+
+- [安装](#安装)
+- [CLI 快速参考](#cli-快速参考)
+- [命令详解](#命令详解)
+- [Web UI 使用指南](#web-ui-使用指南)
+- [CI 集成](#ci-集成)
+- [撤销操作](#撤销操作)
+- [常见场景工作流](#常见场景工作流)
+- [故障排除](#故障排除)
+- [相关文档](#相关文档)
+
 ## 安装
+
+### 系统要求
+
+| 项目 | 要求 |
+|------|------|
+| 操作系统 | Linux / macOS / Windows |
+| Rust 版本 | ≥ 1.70.0 |
+| 依赖 | libgit2 ≥ 1.3（或使用 `vendored-libgit2` 特性） |
+| 推荐磁盘 | 构建需要约 500MB 临时空间 |
 
 ### 前置依赖
 
@@ -39,6 +64,19 @@ echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.bashrc
 cargo install tauri-cli
 cargo tauri dev      # 开发模式
 cargo tauri build    # 构建安装包
+```
+
+### 卸载
+
+```bash
+# 删除二进制
+rm $(which kse)
+
+# 可选：清理历史数据
+rm -rf .git/kse/history.db
+
+# 可选：删除 Tauri 应用（Linux）
+rm -rf ~/.local/share/com.kse.kse
 ```
 
 ---
@@ -123,7 +161,7 @@ kse add https://github.com/user/lib.git libs/lib-a --branch main
 kse add https://github.com/user/lib.git libs/lib-a -b develop
 
 # 指定仓库路径
-kse add https://github.com/user/lib.git libs/lib-a --repo /path/to/project
+kse add https://github.com/user/lib.git libs/lib-a /path/to/project
 
 # dry-run 预览
 kse --dry-run add https://github.com/user/lib.git libs/lib-a
@@ -159,7 +197,7 @@ kse update lib-a -s merge
 kse update lib-a -s fast-forward
 
 # 指定仓库
-kse update lib-a --repo /path/to/project
+kse update lib-a /path/to/project
 ```
 
 **更新策略**：
@@ -197,7 +235,7 @@ kse update-all /path/to/project
 
 ```bash
 kse sync lib-a
-kse sync lib-a --repo /path/to/project
+kse sync lib-a /path/to/project
 ```
 
 执行的操作：
@@ -224,7 +262,7 @@ kse checkout lib-a main
 kse checkout lib-a feature-x
 
 # 指定仓库
-kse checkout lib-a main --repo /path/to/project
+kse checkout lib-a main /path/to/project
 ```
 
 ---
@@ -237,7 +275,7 @@ kse branch lib-a feature-x
 kse branch lib-a hotfix-v2
 
 # 指定仓库
-kse branch lib-a feature-x --repo /path/to/project
+kse branch lib-a feature-x /path/to/project
 ```
 
 ---
@@ -248,7 +286,7 @@ kse branch lib-a feature-x --repo /path/to/project
 
 ```bash
 kse checkout-all main
-kse checkout-all release-v1 --path /path/to/project
+kse checkout-all release-v1 /path/to/project
 ```
 
 ---
@@ -259,7 +297,7 @@ kse checkout-all release-v1 --path /path/to/project
 
 ```bash
 kse branch-all feature-x
-kse branch-all hotfix --path /path/to/project
+kse branch-all hotfix /path/to/project
 ```
 
 ---
@@ -270,7 +308,7 @@ kse branch-all hotfix --path /path/to/project
 
 ```bash
 kse retire lib-old
-kse retire lib-old --repo /path/to/project
+kse retire lib-old /path/to/project
 ```
 
 执行的操作：
@@ -443,6 +481,8 @@ jobs:
 ---
 
 ## 撤销操作
+
+> ⚠️ **风险提示**：以下 `git reset --hard` 会**丢弃所有未提交的修改**，请先确认工作区干净或已 stash。
 
 每次原子操作都被 Git 的 reflog 记录：
 

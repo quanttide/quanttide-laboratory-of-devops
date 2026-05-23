@@ -107,4 +107,4 @@
 |------|------|--------|
 | 4.5 ~~按时间范围筛选历史~~ | ✅ CLI `--start` / `--end` + UI 日期输入 + Tauri 支持 |
 | 2.1 URL 可达性验证 | 需要网络请求 | 低 |
-| 4.4 完整 Orphaned 远程检测 | 需要 fetch 操作 | 低 |
+| 4.4 ~~完整 Orphaned 远程检测~~ | ✅ merge_base 判定的 reachability 检测 |

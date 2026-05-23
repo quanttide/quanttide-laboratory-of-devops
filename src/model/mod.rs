@@ -100,9 +100,9 @@ impl RepoState {
             // 父仓库记录的 commit
             let parent_pointer = CommitHash(sm.head_id().to_string());
 
-            // 子模块本地 HEAD、远程 HEAD 和 commit 差异（一次 open）
-            let (local_head, remote_head, is_detached, ahead_count, behind_count) = if is_uninitialized {
-                (CommitHash::default(), CommitHash::default(), false, 0, 0)
+            // 子模块本地 HEAD、远程 HEAD、commit 差异、Orphaned 检测（一次 open）
+            let (local_head, remote_head, is_detached, ahead_count, behind_count, is_orphaned) = if is_uninitialized {
+                (CommitHash::default(), CommitHash::default(), false, 0, 0, false)
             } else {
                 match git2::Repository::open(&full_sm_path) {
                     Ok(sub_repo) => {
@@ -127,9 +127,24 @@ impl RepoState {
                             .unwrap_or_default();
 
                         let (ahead, behind) = count_commits(&sub_repo, &parent_pointer, &remote, &local);
-                        (local, remote, detached, ahead, behind)
+
+                        // Orphaned: parent_pointer != remote_head and not reachable
+                        let orphaned = if &remote != &CommitHash::default() && &parent_pointer != &remote {
+                            let p = git2::Oid::from_str(&parent_pointer.0).ok();
+                            let r = git2::Oid::from_str(&remote.0).ok();
+                            match (p, r) {
+                                (Some(p_oid), Some(r_oid)) => {
+                                    sub_repo.merge_base(r_oid, p_oid).map(|base| base != p_oid).unwrap_or(false)
+                                }
+                                _ => false,
+                            }
+                        } else {
+                            false
+                        };
+
+                        (local, remote, detached, ahead, behind, orphaned)
                     }
-                    Err(_) => (CommitHash::default(), CommitHash::default(), false, 0, 0),
+                    Err(_) => (CommitHash::default(), CommitHash::default(), false, 0, 0, false),
                 }
             };
 
@@ -139,6 +154,8 @@ impl RepoState {
                 SubmoduleStatus::Dirty
             } else if is_detached {
                 SubmoduleStatus::Detached
+            } else if is_orphaned {
+                SubmoduleStatus::Orphaned
             } else if ahead_count > 0 && behind_count == 0 {
                 SubmoduleStatus::AheadOfParent
             } else if behind_count > 0 {

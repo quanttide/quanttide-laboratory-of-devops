@@ -1,0 +1,10 @@
+/target
+.DS_Store
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+*.iml
+*.pyc
+__pycache__/

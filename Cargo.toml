@@ -3,7 +3,7 @@ name = "kse"
 version = "2.0.0"
 edition = "2021"
 description = "qtcloud-devops — 量潮DevOps实验室 CLI"
-authors = ["iGuo <iGuo19961110@gmail.com>"]
+authors = ["Guo-Zhang <zhangguo@quanttide.com>"]
 
 [lib]
 name = "kse_core"

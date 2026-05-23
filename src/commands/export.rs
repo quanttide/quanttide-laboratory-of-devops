@@ -31,12 +31,15 @@ fn generate_shell_script(_all: &[Submodule], needs_update: &[&Submodule]) -> Str
     if needs_update.is_empty() {
         s.push_str("# 所有子模块已是最新状态\n");
     } else {
-        s.push_str("# 需要更新的子模块:\n");
+        s.push_str("# 需要更新的子模块 (请使用 git submodule update):\n");
         for sm in needs_update {
-            s.push_str(&format!("kse update {} --strategy fast-forward\n", sm.name));
+            s.push_str(&format!(
+                "#   git submodule update --remote --merge {}\n",
+                sm.name
+            ));
         }
         s.push_str("\n# 同步到父仓库\n");
-        s.push_str("kse sync-all\n");
+        s.push_str("kse sync parent --all\n");
     }
     s
 }
@@ -56,15 +59,15 @@ fn generate_github_actions(_all: &[Submodule], needs_update: &[&Submodule]) -> S
         s.push_str("      - name: Update submodules\n");
         for sm in needs_update {
             s.push_str(&format!(
-                "        run: ./target/release/kse update {} --strategy fast-forward\n",
+                "        run: git -C {} submodule update --remote --merge\n",
                 sm.name
             ));
         }
         s.push_str("      - name: Sync to parent\n");
-        s.push_str("        run: ./target/release/kse sync-all\n");
+        s.push_str("        run: ./target/release/kse sync parent --all\n");
     } else {
         s.push_str("      - name: Check status\n");
-        s.push_str("        run: ./target/release/kse health-check\n");
+        s.push_str("        run: ./target/release/kse status\n");
     }
     s
 }
@@ -79,11 +82,11 @@ fn generate_gitlab_ci(_all: &[Submodule], needs_update: &[&Submodule]) -> String
     if !needs_update.is_empty() {
         for sm in needs_update {
             s.push_str(&format!(
-                "    - ./target/release/kse update {} --strategy fast-forward\n",
+                "    - git -C {} submodule update --remote --merge\n",
                 sm.name
             ));
         }
-        s.push_str("    - ./target/release/kse sync-all\n");
+        s.push_str("    - ./target/release/kse sync parent --all\n");
     }
     s.push_str("  only:\n    - schedules\n");
     s
@@ -144,7 +147,7 @@ mod tests {
         assert!(script.starts_with("#!/bin/bash"));
         assert!(script.contains("lib-behind"));
         assert!(script.contains("lib-new"));
-        assert!(script.contains("kse sync-all"));
+        assert!(script.contains("sync parent"));
         assert!(!script.contains("lib-clean"));
     }
 
@@ -175,8 +178,8 @@ mod tests {
         let state = make_state(vec![(SubmoduleStatus::Clean, "lib-a")]);
         let script = generate_ci_script(&state, "github");
         assert!(script.contains("name: Update Submodules"));
-        assert!(script.contains("health-check"));
-        assert!(!script.contains("update "));
+        assert!(script.contains("kse status"));
+        assert!(!script.contains("submodule update"));
     }
 
     #[test]

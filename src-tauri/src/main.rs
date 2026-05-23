@@ -2,15 +2,14 @@
 
 use kse_core::commands::editor::GitSubmoduleEditor;
 use kse_core::commands::export;
-use kse_core::commands::{SubmoduleEditor, UpdateStrategy};
-use kse_core::model::RepoState;
+use kse_core::commands::SubmoduleEditor;
+use kse_core::model::{AggregateStatus, RepoState};
 use std::path::PathBuf;
 
 #[tauri::command]
 fn scan_repo(path: String) -> Result<ScanResult, String> {
     let root = PathBuf::from(&path);
-    let state =
-        RepoState::scan(&root).map_err(|e| format!("扫描失败: {}", e))?;
+    let state = RepoState::scan(&root).map_err(|e| format!("扫描失败: {}", e))?;
 
     let submodules: Vec<SubmoduleInfo> = state
         .submodules
@@ -30,25 +29,27 @@ fn scan_repo(path: String) -> Result<ScanResult, String> {
         })
         .collect();
 
-    let agg = kse_core::model::AggregateStatus::from_submodules(&state.submodules);
-
-    Ok(ScanResult { submodules, aggregate: AggregateInfo {
-        total: agg.total,
-        clean: agg.clean,
-        ahead_of_parent: agg.ahead_of_parent,
-        behind_remote: agg.behind_remote,
-        detached: agg.detached,
-        dirty: agg.dirty,
-        orphaned: agg.orphaned,
-        uninitialized: agg.uninitialized,
-    }})
+    let agg = AggregateStatus::from_submodules(&state.submodules);
+    Ok(ScanResult {
+        submodules,
+        aggregate: AggregateInfo {
+            total: agg.total,
+            clean: agg.clean,
+            ahead_of_parent: agg.ahead_of_parent,
+            behind_remote: agg.behind_remote,
+            detached: agg.detached,
+            dirty: agg.dirty,
+            orphaned: agg.orphaned,
+            uninitialized: agg.uninitialized,
+        },
+    })
 }
 
 #[tauri::command]
-fn health_check(path: String) -> Result<Vec<IssueInfo>, String> {
+fn status(path: String) -> Result<Vec<IssueInfo>, String> {
     let root = PathBuf::from(&path);
     let editor = GitSubmoduleEditor::new(root);
-    let issues = editor.health_check().map_err(|e| format!("健康检查失败: {}", e))?;
+    let issues = editor.status().map_err(|e| format!("状态检查失败: {}", e))?;
     Ok(issues
         .into_iter()
         .map(|i| IssueInfo {
@@ -58,36 +59,6 @@ fn health_check(path: String) -> Result<Vec<IssueInfo>, String> {
             suggested_action: i.suggested_action,
         })
         .collect())
-}
-
-#[tauri::command]
-fn init_all(path: String) -> Result<String, String> {
-    let root = PathBuf::from(&path);
-    let editor = GitSubmoduleEditor::new(root);
-    editor.init_all().map_err(|e| format!("初始化失败: {}", e))?;
-    Ok("已初始化所有子模块".into())
-}
-
-#[tauri::command]
-fn update_single(repo: String, name: String, strategy: String) -> Result<String, String> {
-    let root = PathBuf::from(&repo);
-    let strategy = parse_strategy(&strategy)?;
-    let editor = GitSubmoduleEditor::new(root);
-    editor
-        .update_single(&name, strategy)
-        .map_err(|e| format!("更新失败: {}", e))?;
-    Ok(format!("已更新子模块 '{}'", name))
-}
-
-#[tauri::command]
-fn update_all(path: String, strategy: String) -> Result<String, String> {
-    let root = PathBuf::from(&path);
-    let strategy = parse_strategy(&strategy)?;
-    let editor = GitSubmoduleEditor::new(root);
-    editor
-        .update_all(strategy)
-        .map_err(|e| format!("批量更新失败: {}", e))?;
-    Ok("已更新所有子模块".into())
 }
 
 #[tauri::command]
@@ -121,22 +92,6 @@ fn retire_submodule(repo: String, name: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-fn checkout_all(path: String, branch: String) -> Result<String, String> {
-    let root = PathBuf::from(&path);
-    let editor = GitSubmoduleEditor::new(root);
-    editor.checkout_all(&branch).map_err(|e| format!("批量切换失败: {}", e))?;
-    Ok(format!("已切换所有子模块到分支 '{}'", branch))
-}
-
-#[tauri::command]
-fn branch_all(path: String, branch: String) -> Result<String, String> {
-    let root = PathBuf::from(&path);
-    let editor = GitSubmoduleEditor::new(root);
-    editor.branch_all(&branch).map_err(|e| format!("批量创建分支失败: {}", e))?;
-    Ok(format!("已创建分支 '{}' 到所有子模块", branch))
-}
-
-#[tauri::command]
 fn export_ci(path: String, format: String) -> Result<String, String> {
     let root = PathBuf::from(&path);
     let state = RepoState::scan(&root).map_err(|e| format!("扫描失败: {}", e))?;
@@ -144,7 +99,13 @@ fn export_ci(path: String, format: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-fn list_history(path: String, limit: usize, submodule: Option<String>, start_date: Option<String>, end_date: Option<String>) -> Result<Vec<HistoryRecord>, String> {
+fn list_history(
+    path: String,
+    limit: usize,
+    submodule: Option<String>,
+    start_date: Option<String>,
+    end_date: Option<String>,
+) -> Result<Vec<HistoryRecord>, String> {
     let root = PathBuf::from(&path);
     let editor = GitSubmoduleEditor::new(root);
     let records = editor
@@ -161,18 +122,6 @@ fn list_history(path: String, limit: usize, submodule: Option<String>, start_dat
             success: r.success,
         })
         .collect())
-}
-
-fn parse_strategy(s: &str) -> Result<UpdateStrategy, String> {
-    match s.to_lowercase().replace("-", "_").as_str() {
-        "fastforward" | "ff" | "fast_forward" => Ok(UpdateStrategy::FastForward),
-        "rebase" => Ok(UpdateStrategy::Rebase),
-        "merge" => Ok(UpdateStrategy::Merge),
-        _ => Err(format!(
-            "未知策略 '{}'，可选: fast-forward, rebase, merge",
-            s
-        )),
-    }
 }
 
 #[derive(serde::Serialize)]
@@ -230,17 +179,12 @@ fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             scan_repo,
-            health_check,
-            init_all,
-            update_single,
-            update_all,
+            status,
             sync_to_parent,
             sync_all_to_parent,
             retire_submodule,
             list_history,
             export_ci,
-            checkout_all,
-            branch_all,
         ])
         .run(tauri::generate_context!())
         .expect("启动 KSE 失败");

@@ -1,6 +1,5 @@
 const invoke = window.__TAURI__ ? window.__TAURI__.invoke : null;
 
-// ---- Modal (dry-run preview) ----
 let pendingAction = null;
 
 function showModal(title, body, onConfirm) {
@@ -15,7 +14,6 @@ function closeModal() {
   pendingAction = null;
 }
 
-// ---- Progress ----
 function showProgress(msg) {
   const el = document.getElementById('progress');
   el.textContent = msg;
@@ -26,7 +24,6 @@ function hideProgress() {
   document.getElementById('progress').style.display = 'none';
 }
 
-// ---- Messaging ----
 function log(msg) {
   const el = document.getElementById('messages');
   const div = document.createElement('div');
@@ -40,7 +37,6 @@ function getRepoPath() {
   return document.getElementById('repo-path').value.trim() || '.';
 }
 
-// ---- Selection ----
 function toggleSelectAll() {
   const checked = document.getElementById('select-all').checked;
   document.querySelectorAll('.sm-checkbox').forEach(cb => cb.checked = checked);
@@ -52,7 +48,6 @@ function getSelectedNames() {
     .filter(Boolean);
 }
 
-// ---- Scan ----
 async function scan() {
   const path = getRepoPath();
   const tbody = document.getElementById('submodules-body');
@@ -70,7 +65,7 @@ async function scan() {
     const result = await invoke('scan_repo', { path });
     const submodules = result.submodules;
     const agg = result.aggregate;
-    const health = await invoke('health_check', { path });
+    const health = await invoke('status', { path });
 
     if (submodules.length === 0) {
       tbody.innerHTML = '<tr><td colspan="5" class="empty">没有子模块</td></tr>';
@@ -101,7 +96,6 @@ async function scan() {
     document.getElementById('stat-clean').textContent = clean;
     document.getElementById('stat-attention').textContent = attention;
 
-    // 聚合统计侧边栏
     let aggHtml = '';
     if (agg) {
       if (agg.ahead_of_parent > 0) aggHtml += `<p>领先: ${agg.ahead_of_parent}</p>`;
@@ -122,7 +116,6 @@ async function scan() {
   }
 }
 
-// ---- Detail ----
 function showDetail(name, pp, local, remote, status, branch, ahead, behind, unreachable) {
   const detail = document.getElementById('detail');
   detail.style.display = 'block';
@@ -135,27 +128,21 @@ function showDetail(name, pp, local, remote, status, branch, ahead, behind, unre
   else diffHtml = `<p>差异: 同步</p>`;
 
   let guidance = '';
-  let fixButtons = '';
   switch (status) {
     case 'Dirty':
       guidance = '<p class="status-dirty">有未提交的修改。建议: 手动 commit 或 stash。</p>';
-      fixButtons = `<button class="btn-sm primary" onclick="alert('请在子模块目录中手动执行 git status 查看变更')">查看变更</button>`;
       break;
     case 'Detached':
-      guidance = '<p class="status-dirty">游离 HEAD 状态。建议: 切换到跟踪分支。</p>';
-      fixButtons = `<button class="btn-sm primary" onclick="updateOne('${name}')">修复: 切换分支</button>`;
+      guidance = '<p class="status-dirty">游离 HEAD 状态。建议: 手动 git checkout 到跟踪分支。</p>';
       break;
     case 'BehindRemote':
-      guidance = '<p>远程有更新。建议: 执行更新。</p>';
-      fixButtons = `<button class="btn-sm primary" onclick="updateOne('${name}')">修复: 更新</button>`;
+      guidance = '<p>远程有更新。建议: 手动 git submodule update。</p>';
       break;
     case 'AheadOfParent':
       guidance = '<p>本地领先于父仓库记录。建议: 同步到父仓库。</p>';
-      fixButtons = `<button class="btn-sm primary" onclick="syncOne('${name}')">修复: 同步</button>`;
       break;
     case 'Uninitialized':
-      guidance = '<p>尚未初始化。建议: 初始化子模块。</p>';
-      fixButtons = `<button class="btn-sm primary" onclick="updateOne('${name}')">修复: 初始化</button>`;
+      guidance = '<p>尚未初始化。建议: 手动 git submodule update --init。</p>';
       break;
     case 'Orphaned':
       guidance = '<p class="status-dirty">父仓库记录的 commit 在远程已不存在。需手动干预。</p>';
@@ -175,33 +162,15 @@ function showDetail(name, pp, local, remote, status, branch, ahead, behind, unre
       <div class="commit-box"><div class="label">远程 HEAD</div><div class="hash">${remote}</div></div>
     </div>
     <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
-      ${fixButtons}
-      <button class="btn-sm primary" onclick="updateOne('${name}')">更新</button>
-      <button class="btn-sm primary" onclick="syncOne('${name}')">同步</button>
+      <button class="btn-sm primary" onclick="syncOne('${name}')">同步到父仓库</button>
       <button class="btn-sm danger" onclick="retireOne('${name}')">退役</button>
     </div>
   `;
 }
 
-// ---- Single actions with dry-run modal ----
-async function confirmAndRun(title, description, actionFn) {
-  showModal(title, description + '\n\n确认执行？', actionFn);
-}
-
-async function updateOne(name) {
-  if (!invoke) return;
-  confirmAndRun('更新子模块', `更新子模块: ${name}\n策略: fast-forward`, async () => {
-    try {
-      const result = await invoke('update_single', { repo: getRepoPath(), name, strategy: 'fast-forward' });
-      log(result);
-      scan();
-    } catch (err) { log(`错误: ${err}`); }
-  });
-}
-
 async function syncOne(name) {
   if (!invoke) return;
-  confirmAndRun('同步子模块', `同步子模块: ${name}\n将更新父仓库 commit 指针`, async () => {
+  showModal('同步到父仓库', `同步子模块: ${name}\n将更新父仓库 commit 指针`, async () => {
     try {
       const result = await invoke('sync_to_parent', { repo: getRepoPath(), name });
       log(result);
@@ -220,49 +189,6 @@ async function retireOne(name) {
   } catch (err) { log(`错误: ${err}`); }
 }
 
-// ---- Batch actions ----
-async function execOnSelected(actionLabel, tauriCmd, paramKey) {
-  const names = getSelectedNames();
-  if (names.length === 0) { log('请先勾选要操作的子模块'); return; }
-  const preview = names.map(n => `  ${n}`).join('\n');
-  const desc = `${actionLabel}\n\n选中 ${names.length} 个子模块:\n${preview}`;
-  showModal(actionLabel, desc, async () => {
-    showProgress(`正在执行 ${actionLabel}... (0/${names.length})`);
-    let done = 0, failed = 0;
-    for (const name of names) {
-      try {
-        await invoke(tauriCmd, { repo: getRepoPath(), name, [paramKey || 'name']: name });
-        done++;
-      } catch (err) {
-        log(`错误: ${name}: ${err}`);
-        failed++;
-      }
-      showProgress(`正在执行 ${actionLabel}... (${done + failed}/${names.length})`);
-    }
-    hideProgress();
-    log(`${actionLabel} 完成: ${done} 成功, ${failed} 失败`);
-    scan();
-  });
-}
-
-async function batchUpdateSelected() {
-  execOnSelected('更新选中子模块', 'update_single', 'strategy');
-}
-
-async function batchSyncSelected() {
-  execOnSelected('同步选中子模块', 'sync_to_parent');
-}
-
-async function batchUpdate() {
-  showModal('全部更新', '将所有子模块更新到最新版本\n策略: fast-forward', async () => {
-    try {
-      const result = await invoke('update_all', { path: getRepoPath(), strategy: 'fast-forward' });
-      log(result);
-      scan();
-    } catch (err) { log(`错误: ${err}`); }
-  });
-}
-
 async function batchSync() {
   showModal('全部同步', '将所有子模块指针同步到父仓库', async () => {
     try {
@@ -273,7 +199,6 @@ async function batchSync() {
   });
 }
 
-// ---- CI export ----
 async function exportCI(format) {
   if (!invoke) return;
   try {
@@ -283,7 +208,6 @@ async function exportCI(format) {
   } catch (err) { log(`导出失败: ${err}`); }
 }
 
-// ---- History ----
 async function loadHistory() {
   if (!invoke) return;
   const el = document.getElementById('history-list');
@@ -303,7 +227,6 @@ async function loadHistory() {
   }
 }
 
-// ---- Helpers ----
 function statusClass(status) {
   switch (status) {
     case 'Clean': return 'clean';
@@ -330,14 +253,11 @@ function statusLabel(status) {
 function actionButtons(name, status) {
   if (status === 'Clean') return '';
   let btns = '';
-  if (status === 'BehindRemote' || status === 'Uninitialized') btns += `<button class="btn-sm primary" onclick="event.stopPropagation();updateOne('${name}')">更新</button>`;
   if (status === 'AheadOfParent') btns += `<button class="btn-sm primary" onclick="event.stopPropagation();syncOne('${name}')">同步</button>`;
-  if (status === 'Dirty') btns += `<button class="btn-sm primary" onclick="event.stopPropagation();alert('请手动执行 git status')">查看</button>`;
-  if (status !== 'Clean') btns += `<button class="btn-sm danger" onclick="event.stopPropagation();retireOne('${name}')">退役</button>`;
+  btns += `<button class="btn-sm danger" onclick="event.stopPropagation();retireOne('${name}')">退役</button>`;
   return btns;
 }
 
-// ---- Init ----
 let scanTimer;
 document.getElementById('repo-path').addEventListener('input', () => {
   clearTimeout(scanTimer);

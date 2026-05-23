@@ -1,54 +1,94 @@
 # TODO
 
-## Iteration 9：命令重命名与 sync 族重构
+## Iteration 9：命令清理与核心价值聚焦
 
-### 9.1 `health-check` → `status`
+### 9.1 移除无新贡献的命令
 
-- [ ] **9.1.1** Rust 代码层
-  - [ ] `commands/mod.rs`: trait 方法 `health_check()` → `status()`，保留旧方法代理
-  - [ ] `commands/editor.rs`: `GitSubmoduleEditor` 实现 `status()`，`health_check()` 调用 `status()`
-  - [ ] `src/main.rs`: CLI `HealthCheck` → `Status` 子命令，保留 `HealthCheck` 作为隐藏 alias
-  - [ ] `src-tauri/src/main.rs`: Tauri command `health_check` → `status`，保留 `health_check` 作为 alias
-- [ ] **9.1.2** Web UI + 文档
-  - [ ] `web-ui/src/app.js`: `invoke('health_check')` → `invoke('status')`
-  - [ ] `web-ui/index.html`: 按钮文案更新
-  - [ ] `docs/user-guide.md`: 所有 `kse health-check` → `kse status`
-- [ ] **9.1.3** 别名 + 迁移提示
-  - [ ] CLI alias: `HealthCheck` 作为隐藏子命令，输出迁移信息后调用 `Status`
-  - [ ] Tauri alias: `health_check` 作为别名调用 `status`
+**移除的 CLI 子命令**（共 8 个）：
 
-### 9.2 `sync` 命令族重新设计
+| 命令 | 删除位置 |
+|------|----------|
+| `kse add` | main.rs Commands::Add, editor.rs add_submodule, trait |
+| `kse init` | main.rs Commands::Init, editor.rs init_all, trait |
+| `kse update` | main.rs Commands::Update, editor.rs update_single, trait |
+| `kse update-all` | main.rs Commands::UpdateAll, editor.rs update_all, trait |
+| `kse checkout` | main.rs Commands::Checkout, editor.rs checkout_branch, trait |
+| `kse branch` | main.rs Commands::Branch, editor.rs create_branch, trait |
+| `kse checkout-all` | main.rs Commands::CheckoutAll, editor.rs checkout_all, trait |
+| `kse branch-all` | main.rs Commands::BranchAll, editor.rs branch_all, trait |
 
-- [ ] **9.2.1** `sync parent` — 子模块 → 父仓库指针更新（当前 `sync` 的行为）
-  - [ ] trait 新增 `sync_parent(name)`
-  - [ ] `editor.rs` 实现（代码复用 `sync_to_parent`）
-  - [ ] CLI 注册 `kse sync parent <name>`
-- [ ] **9.2.2** `sync remote` — 远程 → 本地拉取（当前 `update` 的行为）
-  - [ ] trait 新增 `sync_remote(name, strategy)`
-  - [ ] `editor.rs` 实现（代码复用 `update_single`）
-  - [ ] CLI 注册 `kse sync remote <name> [-s strategy]`
-- [ ] **9.2.3** `sync parent --all` / `sync remote --all`
-  - [ ] `sync_all_to_parent` → `sync parent --all`
-  - [ ] `update_all` → `sync remote --all`
-- [ ] **9.2.4** `sync platform` 骨架
-  - [ ] trait 新增 `sync_platform(env)`
-  - [ ] 基础实现：扫描状态 + 输出差异报告（不执行变更）
-  - [ ] CLI 注册 `kse sync platform [--env prod]`
-- [ ] **9.2.5** `kse sync` 顶级命令结构
-  - [ ] `Commands::Sync` 改为带子命令：`SyncParent`, `SyncRemote`, `SyncPlatform`
-  - [ ] `kse sync` 默认等价于 `kse sync parent`
-  - [ ] `kse sync-all` → 保留别名指向 `sync parent --all`
-  - [ ] `kse update` → 保留别名指向 `sync remote`
-  - [ ] `kse update-all` → 保留别名指向 `sync remote --all`
-- [ ] **9.2.6** 测试
-  - [ ] 更新现有测试中的 `sync_to_parent` / `update_single` 调用
-  - [ ] 新增 `sync_platform` 测试
+**移除的 Tauri commands**（共 5 个）：
 
-### 9.3 文档更新
+| Tauri command | 删除位置 |
+|---------------|----------|
+| `init_all` | src-tauri/src/main.rs |
+| `update_single` | src-tauri/src/main.rs |
+| `update_all` | src-tauri/src/main.rs |
+| `checkout_all` | src-tauri/src/main.rs |
+| `branch_all` | src-tauri/src/main.rs |
 
-- [ ] `docs/user-guide.md` sync 章节重写
-- [ ] `docs/dev.md` 接口定义更新
-- [ ] `docs/user-guide.md` status 章节重写
+**移除的 trait 方法**：
+
+| 方法 | trait | impl |
+|------|-------|------|
+| `add_submodule()` | commands/mod.rs | editor.rs |
+| `init_all()` | commands/mod.rs | editor.rs |
+| `update_single()` | commands/mod.rs | editor.rs |
+| `update_all()` | commands/mod.rs | editor.rs |
+| `checkout_branch()` | commands/mod.rs | editor.rs |
+| `checkout_all()` | commands/mod.rs | editor.rs |
+| `create_branch()` | commands/mod.rs | editor.rs |
+| `branch_all()` | commands/mod.rs | editor.rs |
+
+**移除的测试**：
+
+| 测试文件 | 移除内容 |
+|----------|----------|
+| tests/integration.rs | 所有涉及 add/init/checkout/branch 及批量变体的测试 |
+
+### 9.2 `health-check` → `status` 重命名
+
+- [ ] `commands/mod.rs`: `SubmoduleEditor` trait `health_check()` → `status()`
+- [ ] `commands/editor.rs`: impl 实现 → `status()`, `health_check()` 改为 `status()` 的 proxy
+- [ ] `src/main.rs`: `Commands::HealthCheck` → `Commands::Status`; 保留 `HealthCheck` 作为隐藏 alias 输出迁移提示
+- [ ] `src-tauri/src/main.rs`: command `health_check` → `status`; 保留 `health_check` 作为别名
+- [ ] `web-ui/src/app.js`: `invoke('health_check')` → `invoke('status')`
+- [ ] `tests/integration.rs`: 更新 `health_check()` 调用 → `status()`
+
+### 9.3 `sync` 命令族精简
+
+保留的：
+
+| 新命令 | 原身 |
+|--------|------|
+| `kse sync parent <name>` | `sync_to_parent`（保留） |
+| `kse sync parent --all` | `sync_all_to_parent`（保留） |
+
+新增的：
+
+| 新命令 | 说明 |
+|--------|------|
+| `kse sync platform <name> --env <env>` | 跨环境版本对齐占位 |
+
+- [ ] trait 新增 `sync_platform(name, env)` + 骨架实现
+- [ ] CLI 注册 `Commands::Sync { subcommand: SyncParent | SyncPlatform }`
+- [ ] `kse sync` 默认等价于 `kse sync parent`
+- [ ] `kse sync-all` 保留为 alias → `kse sync parent --all`
+- [ ] Tauri command 仅保留 `sync_to_parent`, `sync_all_to_parent`
+- [ ] Web UI 移除无用按钮
+
+### 9.4 测试
+
+- [ ] 删除涉及已移除命令的集成测试
+- [ ] 保留 `sync_to_parent`, `retire_submodule`, `history`, `scan` 测试
+- [ ] 新增 `sync_platform` 骨架测试
+- [ ] `cargo test && cargo clippy -- -D warnings` 通过
+
+### 9.5 文档
+
+- [ ] `docs/user-guide.md`: CLI 命令从上到下全部重写
+- [ ] `docs/dev.md`: 更新 trait 接口定义
+- [ ] `CHANGELOG.md`: 记录破坏性变更
 
 ---
 
@@ -58,5 +98,4 @@
 |------|------|
 | Iter 9 编译验证 | `cargo build && cargo test && cargo clippy -- -D warnings` |
 | CI 触发验证 | `git push origin main` |
-| Tauri 桌面应用 | `cargo tauri dev` |
 | GitHub Release | `gh release create v1.0.0 ...` |

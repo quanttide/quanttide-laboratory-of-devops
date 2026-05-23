@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::commands::history::{HistoryDb, OperationRecord};
-use crate::commands::{HealthIssue, SubmoduleEditor, UpdateStrategy};
+use crate::commands::{HealthIssue, SubmoduleEditor};
 use crate::model::{RepoState, SubmoduleStatus};
 
 pub struct GitSubmoduleEditor {
@@ -29,12 +29,6 @@ impl GitSubmoduleEditor {
             .ok();
     }
 
-    pub(crate) fn log_err(&self, action: &str, submodule: &str, detail: &str) {
-        self.history
-            .log_operation(action, submodule, detail, false)
-            .ok();
-    }
-
     pub fn list_history(
         &self,
         limit: usize,
@@ -50,124 +44,6 @@ impl GitSubmoduleEditor {
 impl SubmoduleEditor for GitSubmoduleEditor {
     fn root(&self) -> &Path {
         &self.root
-    }
-
-    fn add_submodule(
-        &self,
-        url: &str,
-        path: &str,
-        branch: &str,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let repo = git2::Repository::open(&self.root)?;
-
-        // 检测重复：检查同名或同路子模块是否已存在
-        {
-            let repo_submodules = repo.submodules()?;
-            for existing in &repo_submodules {
-                let en = existing.name().unwrap_or("");
-                if en == path {
-                    return Err(format!("子模块 '{}' 已存在 (同名)", path).into());
-                }
-                let ep = existing.path();
-                if ep == Path::new(path) {
-                    return Err(format!("路径 '{}' 已被子模块 '{}' 占用", path, en).into());
-                }
-            }
-        }
-
-        let full_path = self.root.join(path);
-        if full_path.exists() {
-            return Err(format!("路径已存在: {}", path).into());
-        }
-
-        // 验证 URL 可达性（通过 git ls-remote）
-        if let Err(msg) = validate_git_url(url) {
-            return Err(format!("URL 不可达: {} — {}", url, msg).into());
-        }
-
-        // Use native git for submodule add (git2's submodule() has issues with file:// URLs)
-        let output = std::process::Command::new("git")
-            .args(["submodule", "add", "--branch", branch, url, path])
-            .current_dir(&self.root)
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::piped())
-            .output()
-            .map_err(|e| format!("执行 git submodule add 失败: {}", e))?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            let msg = stderr.lines().next().unwrap_or("未知错误").trim();
-            return Err(format!("添加子模块失败: {}", msg).into());
-        }
-
-        let name = path.to_string();
-        self.log_ok(
-            "add",
-            &name,
-            &format!("url={}, path={}, branch={}", url, path, branch),
-        );
-        println!("已添加子模块 '{}'", name);
-        Ok(())
-    }
-
-    fn init_all(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let repo = git2::Repository::open(&self.root)?;
-        let mut submodules = repo.submodules()?;
-        let mut count = 0;
-        for sm in &mut submodules {
-            let name = sm.name().unwrap_or("unknown");
-            let status = repo.submodule_status(name, git2::SubmoduleIgnore::None)?;
-            if status.is_wd_uninitialized() {
-                sm.init(false)?;
-                let name = sm.name().unwrap_or("unknown");
-                self.log_ok("init", name, "初始化子模块");
-                println!("已初始化子模块 '{}'", name);
-                count += 1;
-            }
-        }
-        if count == 0 {
-            println!("没有未初始化的子模块");
-        } else {
-            println!("共初始化 {} 个子模块", count);
-        }
-        Ok(())
-    }
-
-    fn update_single(
-        &self,
-        name: &str,
-        strategy: UpdateStrategy,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let mut repo = git2::Repository::open(&self.root)?;
-        {
-            let status = repo.submodule_status(name, git2::SubmoduleIgnore::None)?;
-            if status.is_wd_modified() || status.is_index_modified() || status.is_wd_untracked() {
-                let msg = format!("子模块 '{}' 有未提交的修改，请先提交或 stash", name);
-                self.log_err("update", name, &msg);
-                return Err(msg.into());
-            }
-        }
-        repo.submodule_set_update(name, strategy.to_git2_update())?;
-        let mut sm = repo.find_submodule(name)?;
-        sm.update(false, None::<&mut git2::SubmoduleUpdateOptions<'_>>)?;
-        self.log_ok("update", name, &format!("strategy={:?}", strategy));
-        println!("已更新子模块 '{}'", name);
-        Ok(())
-    }
-
-    fn update_all(&self, strategy: UpdateStrategy) -> Result<(), Box<dyn std::error::Error>> {
-        let repo = git2::Repository::open(&self.root)?;
-        let submodules = repo.submodules()?;
-        let mut count = 0;
-        for sm in &submodules {
-            let name = sm.name().unwrap_or("unknown").to_string();
-            match self.update_single(&name, strategy) {
-                Ok(()) => count += 1,
-                Err(e) => eprintln!("警告: 更新子模块 '{}' 失败: {}", name, e),
-            }
-        }
-        println!("共更新 {} 个子模块", count);
-        Ok(())
     }
 
     fn sync_to_parent(&self, name: &str) -> Result<(), Box<dyn std::error::Error>> {
@@ -210,75 +86,12 @@ impl SubmoduleEditor for GitSubmoduleEditor {
         Ok(())
     }
 
-    fn checkout_branch(&self, name: &str, branch: &str) -> Result<(), Box<dyn std::error::Error>> {
-        let repo = git2::Repository::open(&self.root)?;
-        let sm = repo.find_submodule(name)?;
-        let sm_repo_path = self.root.join(sm.path());
-        let sm_repo = git2::Repository::open(&sm_repo_path)?;
-
-        let ref_name = format!("refs/heads/{}", branch);
-        let obj = sm_repo.revparse_single(&ref_name)?;
-        sm_repo.checkout_tree(&obj, None)?;
-        sm_repo.set_head(&ref_name)?;
-        self.log_ok("checkout", name, &format!("切换到分支 {}", branch));
-        println!("子模块 '{}' 已切换到分支 '{}'", name, branch);
-        Ok(())
-    }
-
-    fn checkout_all(&self, branch: &str) -> Result<(), Box<dyn std::error::Error>> {
-        let repo = git2::Repository::open(&self.root)?;
-        let submodules = repo.submodules()?;
-        let mut count = 0;
-        for sm in &submodules {
-            let name = sm.name().unwrap_or("unknown").to_string();
-            match self.checkout_branch(&name, branch) {
-                Ok(()) => count += 1,
-                Err(e) => eprintln!("警告: 切换子模块 '{}' 失败: {}", name, e),
-            }
-        }
-        println!("共切换 {} 个子模块到分支 '{}'", count, branch);
-        Ok(())
-    }
-
-    fn create_branch(&self, name: &str, branch: &str) -> Result<(), Box<dyn std::error::Error>> {
-        let repo = git2::Repository::open(&self.root)?;
-        let sm = repo.find_submodule(name)?;
-        let sm_repo_path = self.root.join(sm.path());
-        let sm_repo = git2::Repository::open(&sm_repo_path)?;
-
-        let head = sm_repo.head()?;
-        let commit = head.peel_to_commit()?;
-        sm_repo.branch(branch, &commit, false)?;
-
-        let ref_name = format!("refs/heads/{}", branch);
-        sm_repo.set_head(&ref_name)?;
-        self.log_ok("branch", name, &format!("创建并切换到分支 {}", branch));
-        println!("子模块 '{}' 已创建并切换到分支 '{}'", name, branch);
-        Ok(())
-    }
-
-    fn branch_all(&self, branch: &str) -> Result<(), Box<dyn std::error::Error>> {
-        let repo = git2::Repository::open(&self.root)?;
-        let submodules = repo.submodules()?;
-        let mut count = 0;
-        for sm in &submodules {
-            let name = sm.name().unwrap_or("unknown").to_string();
-            match self.create_branch(&name, branch) {
-                Ok(()) => count += 1,
-                Err(e) => eprintln!("警告: 在子模块 '{}' 创建分支失败: {}", name, e),
-            }
-        }
-        println!("共在 {} 个子模块中创建分支 '{}'", count, branch);
-        Ok(())
-    }
-
     fn retire_submodule(&self, name: &str) -> Result<(), Box<dyn std::error::Error>> {
         let repo = git2::Repository::open(&self.root)?;
         let sm = repo.find_submodule(name)?;
         let url = sm.url().unwrap_or("").to_string();
         let sm_path = sm.path().to_path_buf();
 
-        // git submodule deinit -f <name>
         let result = std::process::Command::new("git")
             .args(["submodule", "deinit", "-f", name])
             .current_dir(&self.root)
@@ -300,10 +113,9 @@ impl SubmoduleEditor for GitSubmoduleEditor {
             let content = std::fs::read_to_string(&gitmodules_path)?;
             let mut new_content = String::new();
             let mut skip = false;
-            let in_submodule = format!(r#"[submodule "{}"]"#, name);
             let in_submodule_alt = format!("[submodule \"{}\"]", name);
             for line in content.lines() {
-                if line.trim() == in_submodule_alt || line.starts_with(&in_submodule) {
+                if line.trim() == in_submodule_alt {
                     skip = true;
                     continue;
                 }
@@ -327,7 +139,7 @@ impl SubmoduleEditor for GitSubmoduleEditor {
         Ok(())
     }
 
-    fn health_check(&self) -> Result<Vec<HealthIssue>, Box<dyn std::error::Error>> {
+    fn status(&self) -> Result<Vec<HealthIssue>, Box<dyn std::error::Error>> {
         let state = RepoState::scan(&self.root)?;
         let mut issues = Vec::new();
         for sm in &state.submodules {
@@ -342,6 +154,27 @@ impl SubmoduleEditor for GitSubmoduleEditor {
             }
         }
         Ok(issues)
+    }
+
+    fn sync_platform(&self, name: &str, env: &str) -> Result<(), Box<dyn std::error::Error>> {
+        // 跨环境版本对齐：扫描当前状态，与环境期望值比对，输出差异报告
+        let state = RepoState::scan(&self.root)?;
+        let sm = state
+            .submodules
+            .iter()
+            .find(|s| s.name == name)
+            .ok_or_else(|| format!("子模块 '{}' 不存在", name))?;
+
+        println!("[{}] 子模块 '{}':", env, name);
+        println!("  父仓库指针: {}", sm.parent_pointer);
+        println!("  本地 HEAD:  {}", sm.local_head);
+        println!("  远程 HEAD:  {}", sm.remote_head);
+        println!("  状态: {:?}", sm.status);
+        if sm.status != SubmoduleStatus::Clean {
+            let (_, action) = describe_issue(&sm.status);
+            println!("  建议: {}", action);
+        }
+        Ok(())
     }
 }
 
@@ -395,41 +228,6 @@ mod tests {
     #[should_panic(expected = "unreachable")]
     fn test_describe_issue_clean_panics() {
         describe_issue(&SubmoduleStatus::Clean);
-    }
-}
-
-/// 通过 `git ls-remote <url> HEAD` 验证 URL 是可达的 Git 仓库
-pub(crate) fn validate_git_url(url: &str) -> Result<(), String> {
-    let output = std::process::Command::new("git")
-        .args(["ls-remote", url, "HEAD"])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::piped())
-        .output()
-        .map_err(|e| format!("无法执行 git: {}", e))?;
-
-    if output.status.success() {
-        Ok(())
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let first_line = stderr.lines().next().unwrap_or("未知错误").trim();
-        Err(first_line.to_string())
-    }
-}
-
-#[cfg(test)]
-mod validate_tests {
-    use super::*;
-
-    #[test]
-    fn test_validate_url_empty() {
-        let result = validate_git_url("");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_validate_url_malformed() {
-        let result = validate_git_url("not-a-url");
-        assert!(result.is_err());
     }
 }
 

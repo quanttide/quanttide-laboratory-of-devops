@@ -27,14 +27,14 @@
 
 - [x] 定义 `CommitHash(String)` 新类型，实现 `Display`（截断 7 位）+ `Default`
 - [x] 定义 `SubmoduleStatus` 枚举（7 种变体 + `priority()`）
-- [x] 定义 `Submodule` 结构体
+- [x] 定义 `Submodule` 结构体（含 `ahead_count` / `behind_count`）
 - [x] 定义 `HealthIssue` 结构体
-- [x] 定义 `RepoState` 结构体 + `RepoState::scan(&Path)` 三路 commit 比对
+- [x] 定义 `RepoState` 结构体 + `RepoState::scan(&Path)` 三路 commit 比对 + revwalk 差异计数
 - [x] 实现 `SubmoduleEditor` trait
 - [x] 实现 `UpdateStrategy` 枚举（FastForward / Rebase / Merge）
 - [x] `kse health-check [path]` — 扫描并表格输出
 - [x] 错误处理：路径不存在 / 非 Git 仓库
-- [x] 6 个单元测试（模型层 + 集成测试 fixture）
+- [x] 单元测试覆盖全部模型层逻辑（14 个测试）
 
 ### Iteration 2：原子操作命令集 ✅
 
@@ -91,6 +91,58 @@
 
 ---
 
+## Iteration 6：规范合规补齐
+
+**目标**：对齐 `git-submodule.md` v1.1 标准。
+
+### 6.1 Orphaned 检测逻辑
+
+- [ ] **6.1.1** 实现 `is_orphaned()` 函数
+  - [ ] 通过 revwalk 或 `odb.exists()` 检查 `parent_pointer` 在远程是否仍存在
+  - [ ] 处理远程不可达时的降级行为（返回 false，不误报）
+- [ ] **6.1.2** 插入判定分支
+  - [ ] 在 `RepoState::scan()` 中 `Dirty` 之后、`Detached` 之前插入 Orphaned 判定
+  - [ ] 保持优先级顺序与标准一致（Dirty > Orphaned > Detached）
+- [ ] **6.1.3** 单元测试
+  - [ ] 模拟远程分支 rebase 后 `parent_pointer` 被删除的场景
+  - [ ] 测试远程不可达时不会误报 Orphaned
+  - [ ] 测试 Orphaned 优先级正确（高于 Detached、低于 Dirty）
+
+### 6.2 离线场景处理
+
+- [ ] **6.2.1** `Submodule` 新增 `remote_unreachable: bool` 字段
+  - [ ] 更新结构体定义
+  - [ ] 更新所有构造位置（scan / 测试中的 mock）
+  - [ ] 确保向后兼容
+- [ ] **6.2.2** 远程不可达时的判定降级
+  - [ ] `remote_head` 获取失败时设置 `remote_unreachable = true`
+  - [ ] 跳过 Orphaned 判定分支
+  - [ ] 跳过 BehindRemote 判定分支
+  - [ ] `ahead_count` / `behind_count` 置 0
+- [ ] **6.2.3** UI 层展示"状态不确定"提示
+  - [ ] 状态列显示 `?` 或"离线"标记
+  - [ ] 详情面板显示"远程仓库不可达"横幅
+
+### 6.3 AggregateStatus + health_check
+
+- [ ] **6.3.1** 定义 `AggregateStatus` 结构体
+  - [ ] 包含 `total` + 全部 7 种状态的计数
+  - [ ] 实现 `Default`（全零）
+  - [ ] 实现 `From<&[Submodule]>` 或关联函数 `from_submodules()`
+- [ ] **6.3.2** 实现 `scan_all()` 函数
+  - [ ] 委托 `RepoState::scan()` 获取子模块列表
+  - [ ] 聚合生成 `AggregateStatus`
+  - [ ] 返回 `(Vec<Submodule>, AggregateStatus)`
+- [ ] **6.3.3** 实现 `health_check()` 函数
+  - [ ] 过滤 `status != Clean` 的子模块
+  - [ ] 为每个非 Clean 状态附上建议操作文本
+  - [ ] 明确为 `scan_all` 的派生视图，不引入独立判定逻辑
+- [ ] **6.3.4** 更新 CLI 和 Tauri 绑定
+  - [ ] `kse health-check` 输出聚合统计
+  - [ ] Tauri command 返回 `AggregateStatus`
+
+---
+
 ## 待完成（需本地环境）
 
 | 任务 | 迭代 | 命令 |
@@ -101,4 +153,8 @@
 | Tauri 跨平台打包 | 5.4 | `cargo tauri build` |
 | GitHub Release | 5.6 | 创建 GitHub Release + 上传安装包 |
 
-<!-- 所有计划任务已完成 -->
+## 低优先级
+
+| 任务 | 原因 |
+|------|------|
+| URL 可达性验证 | 需要异步网络请求（`reqwest` 或 `curl`），与 Iteration 6 的离线场景正交 |

@@ -49,8 +49,8 @@
 - [x] `retire_submodule` — `git submodule deinit` + 移除 `.gitmodules` 条目 + 记录退役信息
 - [x] 错误处理：本地有未提交修改时阻止更新
 - [x] 重复添加检测：同名/同路径校验
-- [x] 集成测试：7 个 `#[ignore]` 测试（临时仓库 + 子模块 fixture）
-- [x] 单元测试覆盖：model（16 tests）、commands（12 tests）、editor（7 tests）、history（9 tests）、export（6 tests）
+- [x] 集成测试：30 个 `#[ignore]` 测试覆盖全部 git2 操作路径
+- [x] 单元测试覆盖：model（14 tests）、commands（7 tests）、editor（7 tests）、history（9 tests）、export（7 tests）
 - [x] `checkout_all` / `branch_all` — 批量切换/创建分支（trait + CLI + Tauri）
 - [x] UI 多选（复选框 + Select All）+ 选中执行 + 进度显示
 - [x] UI dry-run 预览弹窗（模态框，执行前展示操作计划）

@@ -1,0 +1,60 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; color: #333; }
+#app { display: flex; flex-direction: column; height: 100vh; }
+
+header { background: #1a1a2e; color: #eee; padding: 8px 16px; display: flex; align-items: center; gap: 16px; }
+header h1 { font-size: 18px; font-weight: 600; letter-spacing: 1px; }
+.repo-bar { display: flex; flex: 1; gap: 8px; }
+.repo-bar input { flex: 1; padding: 6px 10px; border: 1px solid #444; border-radius: 4px; background: #16213e; color: #eee; font-size: 13px; }
+.repo-bar button { padding: 6px 16px; background: #0f3460; color: #eee; border: 1px solid #1a5276; border-radius: 4px; cursor: pointer; font-size: 13px; }
+.repo-bar button:hover { background: #1a5276; }
+
+.layout { display: flex; flex: 1; overflow: hidden; }
+aside { width: 220px; background: #fff; border-right: 1px solid #ddd; padding: 16px; overflow-y: auto; }
+aside h3 { font-size: 13px; color: #666; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+aside p { font-size: 13px; margin: 4px 0; }
+aside hr { border: none; border-top: 1px solid #eee; margin: 12px 0; }
+aside button { width: 100%; padding: 6px 12px; margin: 4px 0; background: #0f3460; color: #eee; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; }
+aside button:hover { background: #1a5276; }
+
+main { flex: 1; padding: 16px; overflow-y: auto; }
+
+#issues { margin-bottom: 12px; }
+.issue { padding: 8px 12px; margin-bottom: 4px; border-radius: 4px; font-size: 13px; border-left: 4px solid; }
+.issue.warning { background: #fff3cd; border-color: #ffc107; }
+.issue.error { background: #f8d7da; border-color: #dc3545; }
+.issue.info { background: #d1ecf1; border-color: #17a2b8; }
+
+table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 6px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+thead th { background: #f8f9fa; padding: 10px 12px; text-align: left; font-size: 12px; text-transform: uppercase; color: #666; letter-spacing: 0.5px; border-bottom: 2px solid #eee; }
+tbody td { padding: 10px 12px; font-size: 13px; border-bottom: 1px solid #f0f0f0; }
+tbody tr:hover { background: #f8f9ff; }
+tbody tr.selected { background: #e8f0fe; }
+.empty { text-align: center; color: #999; padding: 32px !important; }
+
+.status-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+.dot-clean { background: #28a745; }
+.dot-ahead { background: #ffc107; }
+.dot-behind { background: #ffc107; }
+.dot-detached { background: #dc3545; }
+.dot-dirty { background: #dc3545; }
+.dot-orphaned { background: #dc3545; }
+.dot-uninitialized { background: #6c757d; }
+
+td .btn-sm { padding: 3px 10px; font-size: 11px; border: 1px solid #ddd; border-radius: 3px; background: #fff; cursor: pointer; margin-right: 4px; }
+td .btn-sm:hover { background: #f0f0f0; }
+td .btn-sm.primary { border-color: #0f3460; color: #0f3460; }
+td .btn-sm.danger { border-color: #dc3545; color: #dc3545; }
+
+#detail { margin-top: 16px; background: #fff; border-radius: 6px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); display: none; }
+#detail h3 { font-size: 14px; margin-bottom: 8px; }
+#detail .commit-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin: 8px 0; }
+#detail .commit-box { background: #f8f9fa; border-radius: 4px; padding: 10px; text-align: center; }
+#detail .commit-box .label { font-size: 11px; color: #888; margin-bottom: 4px; }
+#detail .commit-box .hash { font-family: monospace; font-size: 14px; }
+
+.status-clean { color: #28a745; }
+.status-dirty { color: #dc3545; }
+
+#messages { font-size: 12px; color: #666; max-height: 200px; overflow-y: auto; }
+#messages .msg { padding: 4px 0; border-bottom: 1px solid #f0f0f0; }

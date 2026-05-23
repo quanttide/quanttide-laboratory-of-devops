@@ -125,39 +125,46 @@
 
 ### 3.1 初始化 Tauri
 
-- [ ] `cargo tauri init` 在 workspace 中创建 `src-tauri/`
-- [ ] 配置 `tauri.conf.json`（窗口标题、尺寸、标识符）
-- [ ] 将 core crate 作为 workspace 依赖引入
-- [ ] 验证 `cargo tauri dev` 启动
+- [x] 创建 `src-tauri/Cargo.toml`（tauri 依赖 + kse_core 引用）
+- [x] 配置 `tauri.conf.json`（窗口标题、尺寸、标识符）
+- [x] 将 core crate 作为路径依赖引入
+- [ ] 验证 `cargo tauri dev` 启动（需本地 Tauri CLI）
 
 ### 3.2 后端命令绑定
 
-- [ ] `health_check` 暴露为 Tauri command
-- [ ] `update_single` / `update_all` 暴露为 command
-- [ ] `sync_to_parent` 暴露为 command
-- [ ] 统一错误处理：Rust Error → 前端字符串
+- [x] `health_check` + `scan_repo` 暴露为 Tauri command
+- [x] `update_single` / `update_all` 暴露为 command
+- [x] `sync_to_parent` / `sync_all_to_parent` 暴露为 command
+- [x] `init_all` / `retire_submodule` 暴露为 command
+- [x] 统一错误处理：Rust Error → String
 
 ### 3.3 UI 布局
 
-- [ ] 侧边栏：仓库路径显示 + 刷新按钮
-- [ ] 主表格：名称 / 状态（颜色圆点） / 分支 / 操作按钮
-- [ ] 状态颜色映射：绿色(Clean) / 黄色(Ahead, Behind) / 红色(Dirty, Detached, Orphaned) / 灰色(Uninitialized)
-- [ ] 响应式布局
+- [x] 侧边栏：仓库路径显示 + 刷新按钮 + 批量操作
+- [x] 主表格：名称 / 状态（颜色圆点） / 分支 / 操作按钮
+- [x] 状态颜色映射：绿色(Clean) / 黄色(Ahead, Behind) / 红色(Dirty, Detached, Orphaned) / 灰色(Uninitialized)
+- [x] 响应式布局（flex 自适应）
 
 ### 3.4 详情面板
 
-- [ ] 选中子模块展示详情
-- [ ] 三个 commit 对比列（parent_pointer / local_head / remote_head）
-- [ ] 状态说明文本 + 建议操作按钮
-- [ ] 显示与远程的 commit 差异数
+- [x] 选中子模块展示详情
+- [x] 三个 commit 对比列（parent_pointer / local_head / remote_head）
+- [x] 状态说明文本 + 建议操作按钮
+- [ ] 显示与远程的 commit 差异数（待完善）
 
 ### 3.5 批量操作
 
-- [ ] "全部更新"按钮
-- [ ] "全部同步"按钮
-- [ ] 操作进度条或 loading 指示器
+- [x] "全部更新"按钮
+- [x] "全部同步"按钮
+- [ ] 操作进度提示（待完善）
 
-**验证**：`cargo tauri build` 通过
+### 3.6 代码拆分
+
+- [x] 创建 `src/lib.rs` 作为共享库
+- [x] `src/main.rs` 保持不变（CLI 二进制）
+- [x] `src-tauri/` 作为独立二进制，依赖 `kse_core`
+
+**验证**：`cargo tauri build` 通过（需本地 Tauri CLI）
 
 ---
 

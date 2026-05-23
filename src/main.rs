@@ -1,11 +1,9 @@
 use clap::{Parser, Subcommand};
-use commands::editor::GitSubmoduleEditor;
-use commands::{SubmoduleEditor, UpdateStrategy};
+use kse_core::commands::editor::GitSubmoduleEditor;
+use kse_core::commands::{SubmoduleEditor, UpdateStrategy};
+use kse_core::model;
 use std::path::PathBuf;
 use std::process;
-
-mod commands;
-mod model;
 
 #[derive(Parser)]
 #[command(name = "kse", about = "Git Submodule 专用编辑器 — 多仓库项目的子模块可视化工具")]

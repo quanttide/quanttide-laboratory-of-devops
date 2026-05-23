@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KSE — Git Submodule Editor</title>
+  <link rel="stylesheet" href="src/style.css" />
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>KSE</h1>
+      <div class="repo-bar">
+        <input id="repo-path" type="text" value="." placeholder="仓库路径" />
+        <button id="btn-refresh" onclick="scan()">刷新</button>
+      </div>
+    </header>
+    <div class="layout">
+      <aside>
+        <h3>概览</h3>
+        <div id="summary">
+          <p>子模块总数: <span id="stat-total">-</span></p>
+          <p>干净: <span id="stat-clean" class="status-clean">-</span></p>
+          <p>需要关注: <span id="stat-attention" class="status-dirty">-</span></p>
+        </div>
+        <hr />
+        <h3>批量操作</h3>
+        <button onclick="batchUpdate()">全部更新</button>
+        <button onclick="batchSync()">全部同步</button>
+        <hr />
+        <h3>操作提示</h3>
+        <div id="messages"></div>
+      </aside>
+      <main>
+        <div id="issues"></div>
+        <table id="submodules-table">
+          <thead>
+            <tr>
+              <th>名称</th>
+              <th>状态</th>
+              <th>分支</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="submodules-body">
+            <tr><td colspan="4" class="empty">点击刷新加载子模块列表</td></tr>
+          </tbody>
+        </table>
+        <div id="detail"></div>
+      </main>
+    </div>
+  </div>
+  <script src="src/app.js"></script>
+</body>
+</html>

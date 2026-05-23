@@ -5,6 +5,14 @@ edition = "2021"
 description = "Git Submodule 专用编辑器 — 多仓库项目的子模块可视化工具"
 authors = ["iGuo <iGuo19961110@gmail.com>"]
 
+[lib]
+name = "kse_core"
+path = "src/lib.rs"
+
+[[bin]]
+name = "kse"
+path = "src/main.rs"
+
 [dependencies]
 git2 = { version = "0.19", features = ["vendored"] }
 clap = { version = "4", features = ["derive"] }

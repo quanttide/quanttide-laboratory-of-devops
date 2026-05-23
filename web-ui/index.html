@@ -28,6 +28,11 @@
         <button onclick="batchUpdate()">全部更新</button>
         <button onclick="batchSync()">全部同步</button>
         <hr />
+        <h3>导出 CI</h3>
+        <button onclick="exportCI('shell')">Shell 脚本</button>
+        <button onclick="exportCI('github')">GitHub Actions</button>
+        <button onclick="exportCI('gitlab')">GitLab CI</button>
+        <hr />
         <h3>操作提示</h3>
         <div id="messages"></div>
         <hr />

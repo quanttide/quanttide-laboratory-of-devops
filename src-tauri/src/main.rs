@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use kse_core::commands::editor::GitSubmoduleEditor;
+use kse_core::commands::export;
 use kse_core::commands::{SubmoduleEditor, UpdateStrategy};
 use kse_core::model::RepoState;
 use std::path::PathBuf;
@@ -106,6 +107,13 @@ fn retire_submodule(repo: String, name: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+fn export_ci(path: String, format: String) -> Result<String, String> {
+    let root = PathBuf::from(&path);
+    let state = RepoState::scan(&root).map_err(|e| format!("扫描失败: {}", e))?;
+    Ok(export::generate_ci_script(&state, &format))
+}
+
+#[tauri::command]
 fn list_history(path: String, limit: usize, submodule: Option<String>) -> Result<Vec<HistoryRecord>, String> {
     let root = PathBuf::from(&path);
     let editor = GitSubmoduleEditor::new(root);
@@ -179,6 +187,7 @@ fn main() {
             sync_all_to_parent,
             retire_submodule,
             list_history,
+            export_ci,
         ])
         .run(tauri::generate_context!())
         .expect("启动 KSE 失败");

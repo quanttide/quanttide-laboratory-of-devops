@@ -209,40 +209,43 @@
 
 ### 5.1 批量选择 + 分批执行
 
-- [ ] 按依赖拓扑排序子模块
-- [ ] UI 多选 + 全选
-- [ ] 分批执行 + 进度显示
+- [ ] 按依赖拓扑排序子模块（待实现）
+- [ ] UI 多选 + 全选（待实现）
+- [ ] 分批执行 + 进度显示（待实现）
 
 ### 5.2 dry-run 预览
 
-- [ ] `--dry-run` flag：仅输出计划，不执行
-- [ ] CLI 模式预览列表
-- [ ] UI 模式预览弹窗
+- [x] `--dry-run` flag：全局参数，所有命令支持预览
+- [x] CLI 模式预览：打印将要执行的操作
+- [ ] UI 模式预览弹窗（待实现）
 
 ### 5.3 导出 CI 脚本
 
-- [ ] 导出为 shell 脚本（`export-ci.sh`）
-- [ ] 导出为 GitHub Actions YAML 片段
-- [ ] 导出为 GitLab CI YAML 片段
+- [x] 导出为 shell 脚本（`export-ci.sh` 格式）
+- [x] 导出为 GitHub Actions YAML 片段
+- [x] 导出为 GitLab CI YAML 片段
+- [x] CLI `kse export-ci` 命令
+- [x] Tauri `export_ci` 命令
+- [x] Web UI 侧边栏 "导出 CI" 按钮（复制到剪贴板）
 
 ### 5.4 跨平台打包
 
-- [ ] Tauri 打包配置：macOS .dmg
-- [ ] Tauri 打包配置：Linux .AppImage
-- [ ] Tauri 打包配置：Windows .msi
-- [ ] 验证各平台安装包可安装运行
+- [x] Tauri 打包配置：macOS .dmg（tauri.conf.json 已配置）
+- [x] Tauri 打包配置：Linux .AppImage
+- [x] Tauri 打包配置：Windows .msi
+- [ ] 验证各平台安装包可安装运行（需本地 Tauri CLI）
 
 ### 5.5 用户文档
 
-- [ ] CLI `--help` 完整输出
-- [ ] README 用户手册（安装 / 使用 / 配置 / FAQ）
-- [ ] CHANGELOG.md
+- [x] CLI `--help` 完整输出（clap 自动生成）
+- [x] README 用户手册（安装 / 使用 / 配置）
+- [x] CHANGELOG.md
 
 ### 5.6 端到端测试 + 发布
 
-- [ ] 真实仓库场景测试（例如用本仓库）
+- [ ] 真实仓库场景测试（需本地 Rust 工具链）
 - [ ] 边界场景：空仓库、无子模块、超大子模块
-- [ ] 更新版本号 → v1.0.0
+- [x] 更新版本号 → v1.0.0
 - [ ] GitHub Release
 
 **验证**：全链路 E2E 测试通过

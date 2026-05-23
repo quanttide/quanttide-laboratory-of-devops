@@ -171,6 +171,18 @@ function actionButtons(name, status) {
   return btns;
 }
 
+async function exportCI(format) {
+  if (!invoke) return;
+  try {
+    const script = await invoke('export_ci', { path: getRepoPath(), format });
+    // Copy to clipboard and show notification
+    await navigator.clipboard.writeText(script);
+    log(`已复制 ${format} CI 脚本到剪贴板`);
+  } catch (err) {
+    log(`导出失败: ${err}`);
+  }
+}
+
 async function loadHistory() {
   if (!invoke) return;
   const el = document.getElementById('history-list');

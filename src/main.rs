@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
 use kse_core::commands::editor::GitSubmoduleEditor;
+use kse_core::commands::export;
 use kse_core::commands::{SubmoduleEditor, UpdateStrategy};
 use kse_core::model;
 use std::path::PathBuf;
@@ -8,6 +9,10 @@ use std::process;
 #[derive(Parser)]
 #[command(name = "kse", about = "Git Submodule 专用编辑器 — 多仓库项目的子模块可视化工具")]
 struct Cli {
+    /// 预览模式：仅输出计划，不执行任何操作
+    #[arg(global = true, long = "dry-run")]
+    dry_run: bool,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -16,102 +21,89 @@ struct Cli {
 enum Commands {
     /// 扫描并展示仓库所有子模块的状态
     HealthCheck {
-        /// 仓库根目录路径，默认为当前目录
         #[arg(default_value = ".")]
         path: PathBuf,
     },
     /// 添加一个新的子模块
     Add {
-        /// 子模块 URL
         url: String,
-        /// 子模块路径
         path: String,
-        /// 跟踪分支，默认为 main
         #[arg(default_value = "main", long = "branch", short = 'b')]
         branch: String,
-        /// 仓库根目录路径
         #[arg(default_value = ".")]
         repo: PathBuf,
     },
     /// 初始化所有未初始化的子模块
     Init {
-        /// 仓库根目录路径
         #[arg(default_value = ".")]
         path: PathBuf,
     },
     /// 更新单个子模块
     Update {
-        /// 子模块名称
         name: String,
-        /// 更新策略（fast-forward / rebase / merge）
         #[arg(default_value = "fast-forward", long = "strategy", short = 's')]
         strategy: String,
-        /// 仓库根目录路径
         #[arg(default_value = ".")]
         repo: PathBuf,
     },
     /// 更新所有子模块
     UpdateAll {
-        /// 更新策略（fast-forward / rebase / merge）
         #[arg(default_value = "fast-forward", long = "strategy", short = 's')]
         strategy: String,
-        /// 仓库根目录路径
         #[arg(default_value = ".")]
         path: PathBuf,
     },
     /// 同步子模块指针到父仓库
     Sync {
-        /// 子模块名称
         name: String,
-        /// 仓库根目录路径
         #[arg(default_value = ".")]
         repo: PathBuf,
     },
     /// 同步所有子模块指针到父仓库
     SyncAll {
-        /// 仓库根目录路径
         #[arg(default_value = ".")]
         path: PathBuf,
     },
     /// 切换子模块分支
     Checkout {
-        /// 子模块名称
         name: String,
-        /// 目标分支
         branch: String,
-        /// 仓库根目录路径
         #[arg(default_value = ".")]
         repo: PathBuf,
     },
     /// 在子模块中创建并切换到新分支
     Branch {
-        /// 子模块名称
         name: String,
-        /// 新分支名称
         branch: String,
-        /// 仓库根目录路径
         #[arg(default_value = ".")]
         repo: PathBuf,
     },
     /// 退役（软删除）一个子模块
     Retire {
-        /// 子模块名称
         name: String,
-        /// 仓库根目录路径
         #[arg(default_value = ".")]
         repo: PathBuf,
     },
     /// 查看操作历史
     History {
+        #[arg(default_value = ".")]
+        path: PathBuf,
+        #[arg(default_value = "20", long = "limit", short = 'n')]
+        limit: usize,
+        #[arg(long = "submodule", short = 'm')]
+        submodule: Option<String>,
+    },
+    /// 导出为可执行的 CI 脚本
+    ExportCi {
         /// 仓库根目录路径
         #[arg(default_value = ".")]
         path: PathBuf,
-        /// 显示条数
-        #[arg(default_value = "20", long = "limit", short = 'n')]
-        limit: usize,
-        /// 按子模块名称筛选
-        #[arg(long = "submodule", short = 'm')]
-        submodule: Option<String>,
+        /// 输出格式: shell / github / gitlab
+        #[arg(default_value = "shell", long = "format", short = 'f')]
+        format: String,
+        /// 输出文件路径，默认输出到 stdout
+        #[arg(long = "output", short = 'o')]
+        output: Option<PathBuf>,
     },
 }
 
@@ -136,6 +128,7 @@ fn resolve_path(path: &PathBuf) -> PathBuf {
 
 fn main() {
     let cli = Cli::parse();
+    let dry_run = cli.dry_run;
 
     match cli.command {
         Commands::HealthCheck { path } => {
@@ -154,7 +147,6 @@ fn main() {
                         println!("需要关注: {}", state.needs_attention.join(", "));
                     }
                     println!();
-
                     if state.submodules.is_empty() && state.total == 0 {
                         println!("  没有子模块");
                     } else {
@@ -167,7 +159,6 @@ fn main() {
                             );
                         }
                     }
-
                     if !issues.is_empty() {
                         println!("\n健康问题:");
                         for issue in &issues {
@@ -189,11 +180,19 @@ fn main() {
             repo,
         } => {
             let root = resolve_path(&repo);
+            if dry_run {
+                println!("[预览] 添加子模块: url={}, path={}, branch={}", url, path, branch);
+                return;
+            }
             let editor = GitSubmoduleEditor::new(root);
             exec(editor.add_submodule(&url, &path, &branch));
         }
         Commands::Init { path } => {
             let root = resolve_path(&path);
+            if dry_run {
+                println!("[预览] 初始化所有未初始化的子模块");
+                return;
+            }
             let editor = GitSubmoduleEditor::new(root);
             exec(editor.init_all());
         }
@@ -207,6 +206,10 @@ fn main() {
                 eprintln!("错误: {}", e);
                 process::exit(1);
             });
+            if dry_run {
+                println!("[预览] 更新子模块 '{}' (策略: {:?})", name, strategy);
+                return;
+            }
             let editor = GitSubmoduleEditor::new(root);
             exec(editor.update_single(&name, strategy));
         }
@@ -216,16 +219,28 @@ fn main() {
                 eprintln!("错误: {}", e);
                 process::exit(1);
             });
+            if dry_run {
+                println!("[预览] 更新所有子模块 (策略: {:?})", strategy);
+                return;
+            }
             let editor = GitSubmoduleEditor::new(root);
             exec(editor.update_all(strategy));
         }
         Commands::Sync { name, repo } => {
             let root = resolve_path(&repo);
+            if dry_run {
+                println!("[预览] 同步子模块 '{}' 到父仓库", name);
+                return;
+            }
             let editor = GitSubmoduleEditor::new(root);
             exec(editor.sync_to_parent(&name));
         }
         Commands::SyncAll { path } => {
             let root = resolve_path(&path);
+            if dry_run {
+                println!("[预览] 同步所有子模块到父仓库");
+                return;
+            }
             let editor = GitSubmoduleEditor::new(root);
             exec(editor.sync_all_to_parent());
         }
@@ -235,6 +250,10 @@ fn main() {
             repo,
         } => {
             let root = resolve_path(&repo);
+            if dry_run {
+                println!("[预览] 切换子模块 '{}' 到分支 '{}'", name, branch);
+                return;
+            }
             let editor = GitSubmoduleEditor::new(root);
             exec(editor.checkout_branch(&name, &branch));
         }
@@ -244,11 +263,19 @@ fn main() {
             repo,
         } => {
             let root = resolve_path(&repo);
+            if dry_run {
+                println!("[预览] 在子模块 '{}' 创建并切换到分支 '{}'", name, branch);
+                return;
+            }
             let editor = GitSubmoduleEditor::new(root);
             exec(editor.create_branch(&name, &branch));
         }
         Commands::Retire { name, repo } => {
             let root = resolve_path(&repo);
+            if dry_run {
+                println!("[预览] 退役子模块 '{}'", name);
+                return;
+            }
             let editor = GitSubmoduleEditor::new(root);
             exec(editor.retire_submodule(&name));
         }
@@ -258,7 +285,7 @@ fn main() {
             submodule,
         } => {
             let root = resolve_path(&path);
-            let editor = GitSubmoduleEditor::new(root.clone());
+            let editor = GitSubmoduleEditor::new(root);
             match editor.list_history(limit, submodule.as_deref()) {
                 Ok(records) => {
                     if records.is_empty() {
@@ -277,6 +304,30 @@ fn main() {
                 Err(e) => {
                     eprintln!("错误: {}", e);
                     process::exit(1);
+                }
+            }
+        }
+        Commands::ExportCi {
+            path,
+            format,
+            output,
+        } => {
+            let root = resolve_path(&path);
+            let state = model::RepoState::scan(&root).unwrap_or_else(|e| {
+                eprintln!("错误: {}", e);
+                process::exit(1);
+            });
+            let script = export::generate_ci_script(&state, &format);
+            match output {
+                Some(file) => {
+                    std::fs::write(&file, &script).unwrap_or_else(|e| {
+                        eprintln!("写入文件失败: {}", e);
+                        process::exit(1);
+                    });
+                    println!("已导出到 {}", file.display());
+                }
+                None => {
+                    println!("{}", script);
                 }
             }
         }

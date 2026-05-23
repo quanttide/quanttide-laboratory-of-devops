@@ -1,6 +1,6 @@
 [package]
 name = "kse"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
 description = "Git Submodule 专用编辑器 — 多仓库项目的子模块可视化工具"
 authors = ["iGuo <iGuo19961110@gmail.com>"]

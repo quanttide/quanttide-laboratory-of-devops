@@ -41,6 +41,10 @@
         <div id="messages"></div>
         <hr />
         <h3>操作历史</h3>
+        <div style="display:flex;gap:4px;margin-bottom:6px">
+          <input id="hist-start" type="date" style="flex:1;font-size:11px;padding:2px 4px" onchange="loadHistory()" />
+          <input id="hist-end" type="date" style="flex:1;font-size:11px;padding:2px 4px" onchange="loadHistory()" />
+        </div>
         <div id="history-list"></div>
       </aside>
       <main>

@@ -100,9 +100,9 @@ impl RepoState {
             // 父仓库记录的 commit
             let parent_pointer = CommitHash(sm.head_id().to_string());
 
-            // 子模块本地 HEAD 和远程 HEAD
-            let (local_head, remote_head, is_detached) = if is_uninitialized {
-                (CommitHash::default(), CommitHash::default(), false)
+            // 子模块本地 HEAD、远程 HEAD 和 commit 差异（一次 open）
+            let (local_head, remote_head, is_detached, ahead_count, behind_count) = if is_uninitialized {
+                (CommitHash::default(), CommitHash::default(), false, 0, 0)
             } else {
                 match git2::Repository::open(&full_sm_path) {
                     Ok(sub_repo) => {
@@ -126,18 +126,10 @@ impl RepoState {
                             .map(|o| CommitHash(o.to_string()))
                             .unwrap_or_default();
 
-                        (local, remote, detached)
+                        let (ahead, behind) = count_commits(&sub_repo, &parent_pointer, &remote, &local);
+                        (local, remote, detached, ahead, behind)
                     }
-                    Err(_) => (CommitHash::default(), CommitHash::default(), false),
-                }
-            };
-
-            let (ahead_count, behind_count) = if is_uninitialized {
-                (0, 0)
-            } else {
-                match git2::Repository::open(&full_sm_path) {
-                    Ok(ref sub_repo) => count_commits(sub_repo, &parent_pointer, &remote_head, &local_head),
-                    Err(_) => (0, 0),
+                    Err(_) => (CommitHash::default(), CommitHash::default(), false, 0, 0),
                 }
             };
 

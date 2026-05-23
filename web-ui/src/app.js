@@ -269,8 +269,10 @@ async function exportCI(format) {
 async function loadHistory() {
   if (!invoke) return;
   const el = document.getElementById('history-list');
+  const start = document.getElementById('hist-start').value || null;
+  const end = document.getElementById('hist-end').value || null;
   try {
-    const records = await invoke('list_history', { path: getRepoPath(), limit: 10, submodule: null });
+    const records = await invoke('list_history', { path: getRepoPath(), limit: 10, submodule: null, startDate: start, endDate: end });
     if (records.length === 0) {
       el.innerHTML = '<div class="msg">暂无操作记录</div>';
     } else {

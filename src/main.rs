@@ -104,6 +104,10 @@ enum Commands {
         limit: usize,
         #[arg(long = "submodule", short = 'm')]
         submodule: Option<String>,
+        #[arg(long = "start")]
+        start: Option<String>,
+        #[arg(long = "end")]
+        end: Option<String>,
     },
     /// 导出为可执行的 CI 脚本
     ExportCi {
@@ -306,10 +310,12 @@ fn main() {
             path,
             limit,
             submodule,
+            start,
+            end,
         } => {
             let root = resolve_path(&path);
             let editor = GitSubmoduleEditor::new(root);
-            match editor.list_history(limit, submodule.as_deref()) {
+            match editor.list_history(limit, submodule.as_deref(), start.as_deref(), end.as_deref()) {
                 Ok(records) => {
                     if records.is_empty() {
                         println!("没有操作历史记录");

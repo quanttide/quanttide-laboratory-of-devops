@@ -132,11 +132,11 @@ fn export_ci(path: String, format: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-fn list_history(path: String, limit: usize, submodule: Option<String>) -> Result<Vec<HistoryRecord>, String> {
+fn list_history(path: String, limit: usize, submodule: Option<String>, start_date: Option<String>, end_date: Option<String>) -> Result<Vec<HistoryRecord>, String> {
     let root = PathBuf::from(&path);
     let editor = GitSubmoduleEditor::new(root);
     let records = editor
-        .list_history(limit, submodule.as_deref())
+        .list_history(limit, submodule.as_deref(), start_date.as_deref(), end_date.as_deref())
         .map_err(|e| format!("查询历史失败: {}", e))?;
     Ok(records
         .into_iter()

@@ -13,10 +13,12 @@ impl GitSubmoduleEditor {
     pub fn new(root: PathBuf) -> Self {
         let history = HistoryDb::open(&root).unwrap_or_else(|e| {
             eprintln!("警告: 无法打开操作历史数据库: {}", e);
-            // Create an in-memory fallback
             let db_dir = std::env::temp_dir().join("kse-history");
             std::fs::create_dir_all(&db_dir).ok();
-            HistoryDb::open(&db_dir).expect("无法创建历史数据库")
+            HistoryDb::open(&db_dir).unwrap_or_else(|e2| {
+                eprintln!("警告: 也无法创建临时历史数据库: {} — 操作历史将不可用", e2);
+                HistoryDb::open_in_memory(root.clone())
+            })
         });
         Self { root, history }
     }
@@ -271,8 +273,10 @@ impl SubmoduleEditor for GitSubmoduleEditor {
         &self,
         limit: usize,
         submodule: Option<&str>,
+        start_date: Option<&str>,
+        end_date: Option<&str>,
     ) -> Result<Vec<OperationRecord>, Box<dyn std::error::Error>> {
-        self.history.list_operations(limit, submodule)
+        self.history.list_operations(limit, submodule, start_date, end_date)
     }
 
     fn health_check(&self) -> Result<Vec<HealthIssue>, Box<dyn std::error::Error>> {

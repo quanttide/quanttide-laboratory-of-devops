@@ -16,6 +16,16 @@ pub struct OperationRecord {
 }
 
 impl HistoryDb {
+    pub(crate) fn open_in_memory(repo_root: PathBuf) -> Self {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        let hist = Self {
+            db: conn,
+            repo_path: repo_root,
+        };
+        hist.initialize().ok();
+        hist
+    }
+
     pub fn open(repo_root: &Path) -> Result<Self, Box<dyn std::error::Error>> {
         let db_dir = repo_root.join(".git").join("kse");
         std::fs::create_dir_all(&db_dir)?;
@@ -83,19 +93,37 @@ impl HistoryDb {
         &self,
         limit: usize,
         submodule_filter: Option<&str>,
+        start_date: Option<&str>,
+        end_date: Option<&str>,
     ) -> Result<Vec<OperationRecord>, Box<dyn std::error::Error>> {
-        let (sql, params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) =
-            if let Some(name) = submodule_filter {
-                (
-                    "SELECT id, timestamp, action, submodule_name, detail, success FROM operations WHERE submodule_name = ?1 ORDER BY id DESC LIMIT ?2".into(),
-                    vec![Box::new(name.to_string()), Box::new(limit as i64)],
-                )
-            } else {
-                (
-                    "SELECT id, timestamp, action, submodule_name, detail, success FROM operations ORDER BY id DESC LIMIT ?1".into(),
-                    vec![Box::new(limit as i64)],
-                )
-            };
+        let mut conditions: Vec<String> = Vec::new();
+        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+
+        if let Some(name) = submodule_filter {
+            conditions.push(format!("submodule_name = ?{}", params.len() + 1));
+            params.push(Box::new(name.to_string()));
+        }
+        if let Some(start) = start_date {
+            conditions.push(format!("timestamp >= ?{}", params.len() + 1));
+            params.push(Box::new(start.to_string()));
+        }
+        if let Some(end) = end_date {
+            conditions.push(format!("timestamp <= ?{}", params.len() + 1));
+            params.push(Box::new(end.to_string()));
+        }
+
+        let where_clause = if conditions.is_empty() {
+            String::new()
+        } else {
+            format!("WHERE {}", conditions.join(" AND "))
+        };
+
+        params.push(Box::new(limit as i64));
+        let sql = format!(
+            "SELECT id, timestamp, action, submodule_name, detail, success FROM operations {} ORDER BY id DESC LIMIT ?{}",
+            where_clause,
+            params.len(),
+        );
 
         let mut stmt = self.db.prepare(&sql)?;
         let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
@@ -140,7 +168,7 @@ mod tests {
     fn test_log_and_list_operation() {
         let (_tmp, db) = temp_db();
         db.log_operation("update", "lib-a", "updated to latest", true).unwrap();
-        let records = db.list_operations(10, None).unwrap();
+        let records = db.list_operations(10, None, None, None).unwrap();
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].action, "update");
         assert_eq!(records[0].submodule_name, "lib-a");
@@ -151,7 +179,7 @@ mod tests {
     fn test_log_failure() {
         let (_tmp, db) = temp_db();
         db.log_operation("sync", "lib-b", "network error", false).unwrap();
-        let records = db.list_operations(10, None).unwrap();
+        let records = db.list_operations(10, None, None, None).unwrap();
         assert_eq!(records.len(), 1);
         assert!(!records[0].success);
     }
@@ -162,9 +190,9 @@ mod tests {
         for i in 0..5 {
             db.log_operation("update", &format!("lib-{}", i), "", true).unwrap();
         }
-        let all = db.list_operations(10, None).unwrap();
+        let all = db.list_operations(10, None, None, None).unwrap();
         assert_eq!(all.len(), 5);
-        let limited = db.list_operations(2, None).unwrap();
+        let limited = db.list_operations(2, None, None, None).unwrap();
         assert_eq!(limited.len(), 2);
     }
 
@@ -175,7 +203,7 @@ mod tests {
         db.log_operation("sync", "lib-b", "", true).unwrap();
         db.log_operation("update", "lib-a", "", true).unwrap();
 
-        let records = db.list_operations(10, Some("lib-a")).unwrap();
+        let records = db.list_operations(10, Some("lib-a"), None, None).unwrap();
         assert_eq!(records.len(), 2);
         for r in &records {
             assert_eq!(r.submodule_name, "lib-a");
@@ -186,7 +214,7 @@ mod tests {
     fn test_list_operations_filter_no_match() {
         let (_tmp, db) = temp_db();
         db.log_operation("update", "lib-a", "", true).unwrap();
-        let records = db.list_operations(10, Some("nonexistent")).unwrap();
+        let records = db.list_operations(10, Some("nonexistent"), None, None).unwrap();
         assert_eq!(records.len(), 0);
     }
 
@@ -196,7 +224,7 @@ mod tests {
         db.log_retire("old-lib", "https://example.com/old.git", "libs/old", "no longer needed")
             .unwrap();
 
-        let ops = db.list_operations(10, None).unwrap();
+        let ops = db.list_operations(10, None, None, None).unwrap();
         assert_eq!(ops.len(), 1);
         assert_eq!(ops[0].action, "retire");
         assert_eq!(ops[0].submodule_name, "old-lib");
@@ -211,7 +239,7 @@ mod tests {
     #[test]
     fn test_empty_history() {
         let (_tmp, db) = temp_db();
-        let records = db.list_operations(10, None).unwrap();
+        let records = db.list_operations(10, None, None, None).unwrap();
         assert!(records.is_empty());
     }
 
@@ -222,7 +250,7 @@ mod tests {
         db.log_operation("update", "b", "", true).unwrap();
         db.log_operation("retire", "c", "", true).unwrap();
 
-        let records = db.list_operations(10, None).unwrap();
+        let records = db.list_operations(10, None, None, None).unwrap();
         assert_eq!(records.len(), 3);
         assert_eq!(records[0].action, "retire");
         assert_eq!(records[2].action, "add");

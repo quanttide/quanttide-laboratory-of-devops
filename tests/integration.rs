@@ -369,7 +369,7 @@ fn test_history_logged_on_add() {
     let (remote_path, parent_path) = setup_repo_pair(&tmp);
     let _editor = add_submodule(&parent_path, &remote_path, "lib-h1");
     let db = HistoryDb::open(&parent_path).unwrap();
-    let records = db.list_operations(10, Some("lib-h1")).unwrap();
+    let records = db.list_operations(10, Some("lib-h1"), None, None).unwrap();
     assert!(!records.is_empty());
     let add_ops: Vec<_> = records.iter().filter(|r| r.action == "add").collect();
     assert!(!add_ops.is_empty(), "add should be logged");
@@ -385,7 +385,7 @@ fn test_history_logged_on_sync() {
     commit_file(&sub_repo, Path::new("h.txt"), "h\n", "commit for history test");
     editor.sync_to_parent("lib-h2").unwrap();
     let db = HistoryDb::open(&parent_path).unwrap();
-    let sync_ops = db.list_operations(10, Some("lib-h2")).unwrap();
+    let sync_ops = db.list_operations(10, Some("lib-h2"), None, None).unwrap();
     let sync_entries: Vec<_> = sync_ops.iter().filter(|r| r.action == "sync").collect();
     assert!(!sync_entries.is_empty(), "sync should be logged");
 }
@@ -398,7 +398,7 @@ fn test_history_logged_on_retire() {
     let editor = add_submodule(&parent_path, &remote_path, "lib-h3");
     editor.retire_submodule("lib-h3").unwrap();
     let db = HistoryDb::open(&parent_path).unwrap();
-    let records = db.list_operations(10, Some("lib-h3")).unwrap();
+    let records = db.list_operations(10, Some("lib-h3"), None, None).unwrap();
     let retire_ops: Vec<_> = records.iter().filter(|r| r.action == "retire").collect();
     assert!(!retire_ops.is_empty(), "retire should be logged");
 }
@@ -423,7 +423,7 @@ fn test_history_logs_checkout_and_branch() {
     editor.create_branch("lib-h5", "release").unwrap();
     editor.checkout_branch("lib-h5", "release").unwrap();
     let db = HistoryDb::open(&parent_path).unwrap();
-    let records = db.list_operations(10, Some("lib-h5")).unwrap();
+    let records = db.list_operations(10, Some("lib-h5"), None, None).unwrap();
     let actions: Vec<&str> = records.iter().map(|r| r.action.as_str()).collect();
     assert!(actions.contains(&"branch"), "branch creation not logged");
     assert!(actions.contains(&"checkout"), "checkout not logged");
@@ -543,8 +543,8 @@ fn test_history_list_with_limit() {
         editor.retire_submodule(&name).unwrap();
     }
     let db = HistoryDb::open(&parent_path).unwrap();
-    let limited = db.list_operations(3, None).unwrap();
+    let limited = db.list_operations(3, None, None, None).unwrap();
     assert_eq!(limited.len(), 3);
-    let all = db.list_operations(100, None).unwrap();
+    let all = db.list_operations(100, None, None, None).unwrap();
     assert!(all.len() > 3);
 }

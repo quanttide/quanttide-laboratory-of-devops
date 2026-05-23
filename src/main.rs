@@ -1,6 +1,5 @@
 use clap::{Parser, Subcommand};
 use kse_core::commands::editor::GitSubmoduleEditor;
-use kse_core::commands::export;
 use kse_core::commands::{HealthIssue, SubmoduleEditor};
 use kse_core::model;
 use std::path::PathBuf;
@@ -61,15 +60,6 @@ enum CodeAction {
         start: Option<String>,
         #[arg(long = "end")]
         end: Option<String>,
-    },
-    /// 导出为可执行的 CI 脚本
-    ExportCi {
-        #[arg(default_value = ".")]
-        path: PathBuf,
-        #[arg(default_value = "shell", long = "format", short = 'f')]
-        format: String,
-        #[arg(long = "output", short = 'o')]
-        output: Option<PathBuf>,
     },
 }
 
@@ -248,30 +238,6 @@ fn run_code(dry_run: bool, action: CodeAction) {
             }
         }
 
-        CodeAction::ExportCi {
-            path,
-            format,
-            output,
-        } => {
-            let root = resolve_path(&path);
-            let state = model::RepoState::scan(&root).unwrap_or_else(|e| {
-                eprintln!("错误: {}", e);
-                process::exit(1);
-            });
-            let script = export::generate_ci_script(&state, &format);
-            match output {
-                Some(file) => {
-                    std::fs::write(&file, &script).unwrap_or_else(|e| {
-                        eprintln!("写入文件失败: {}", e);
-                        process::exit(1);
-                    });
-                    println!("已导出到 {}", file.display());
-                }
-                None => {
-                    println!("{}", script);
-                }
-            }
-        }
     }
 }
 

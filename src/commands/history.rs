@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 pub struct HistoryDb {
     db: rusqlite::Connection,
+    #[allow(dead_code)]
     repo_path: PathBuf,
 }
 
@@ -126,7 +127,8 @@ impl HistoryDb {
         );
 
         let mut stmt = self.db.prepare(&sql)?;
-        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+            params.iter().map(|p| p.as_ref()).collect();
         let rows = stmt.query_map(param_refs.as_slice(), |row| {
             Ok(OperationRecord {
                 id: row.get(0)?,
@@ -167,7 +169,8 @@ mod tests {
     #[test]
     fn test_log_and_list_operation() {
         let (_tmp, db) = temp_db();
-        db.log_operation("update", "lib-a", "updated to latest", true).unwrap();
+        db.log_operation("update", "lib-a", "updated to latest", true)
+            .unwrap();
         let records = db.list_operations(10, None, None, None).unwrap();
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].action, "update");
@@ -178,7 +181,8 @@ mod tests {
     #[test]
     fn test_log_failure() {
         let (_tmp, db) = temp_db();
-        db.log_operation("sync", "lib-b", "network error", false).unwrap();
+        db.log_operation("sync", "lib-b", "network error", false)
+            .unwrap();
         let records = db.list_operations(10, None, None, None).unwrap();
         assert_eq!(records.len(), 1);
         assert!(!records[0].success);
@@ -188,7 +192,8 @@ mod tests {
     fn test_list_operations_limit() {
         let (_tmp, db) = temp_db();
         for i in 0..5 {
-            db.log_operation("update", &format!("lib-{}", i), "", true).unwrap();
+            db.log_operation("update", &format!("lib-{}", i), "", true)
+                .unwrap();
         }
         let all = db.list_operations(10, None, None, None).unwrap();
         assert_eq!(all.len(), 5);
@@ -214,15 +219,22 @@ mod tests {
     fn test_list_operations_filter_no_match() {
         let (_tmp, db) = temp_db();
         db.log_operation("update", "lib-a", "", true).unwrap();
-        let records = db.list_operations(10, Some("nonexistent"), None, None).unwrap();
+        let records = db
+            .list_operations(10, Some("nonexistent"), None, None)
+            .unwrap();
         assert_eq!(records.len(), 0);
     }
 
     #[test]
     fn test_log_retire() {
         let (_tmp, db) = temp_db();
-        db.log_retire("old-lib", "https://example.com/old.git", "libs/old", "no longer needed")
-            .unwrap();
+        db.log_retire(
+            "old-lib",
+            "https://example.com/old.git",
+            "libs/old",
+            "no longer needed",
+        )
+        .unwrap();
 
         let ops = db.list_operations(10, None, None, None).unwrap();
         assert_eq!(ops.len(), 1);
@@ -231,7 +243,11 @@ mod tests {
 
         let count: i64 = db
             .db
-            .query_row("SELECT COUNT(*) FROM retired_submodules WHERE name = ?1", ["old-lib"], |row| row.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM retired_submodules WHERE name = ?1",
+                ["old-lib"],
+                |row| row.get(0),
+            )
             .unwrap();
         assert_eq!(count, 1);
     }
@@ -256,4 +272,3 @@ mod tests {
         assert_eq!(records[2].action, "add");
     }
 }
-

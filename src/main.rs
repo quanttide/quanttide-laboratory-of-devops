@@ -7,7 +7,10 @@ use std::path::PathBuf;
 use std::process;
 
 #[derive(Parser)]
-#[command(name = "kse", about = "Git Submodule 专用编辑器 — 多仓库项目的子模块可视化工具")]
+#[command(
+    name = "kse",
+    about = "Git Submodule 专用编辑器 — 多仓库项目的子模块可视化工具"
+)]
 struct Cli {
     /// 预览模式：仅输出计划，不执行任何操作
     #[arg(global = true, long = "dry-run")]
@@ -167,18 +170,33 @@ fn main() {
                         println!("\n聚合统计:");
                         println!("  总数: {}", agg.total);
                         println!("  ✅ Clean: {}", agg.clean);
-                        if agg.ahead_of_parent > 0 { println!("  ⬆ AheadOfParent: {}", agg.ahead_of_parent); }
-                        if agg.behind_remote > 0 { println!("  ⬇ BehindRemote: {}", agg.behind_remote); }
-                        if agg.detached > 0 { println!("  ⚠ Detached: {}", agg.detached); }
-                        if agg.dirty > 0 { println!("  🔴 Dirty: {}", agg.dirty); }
-                        if agg.orphaned > 0 { println!("  💀 Orphaned: {}", agg.orphaned); }
-                        if agg.uninitialized > 0 { println!("  ⚪ Uninitialized: {}", agg.uninitialized); }
+                        if agg.ahead_of_parent > 0 {
+                            println!("  ⬆ AheadOfParent: {}", agg.ahead_of_parent);
+                        }
+                        if agg.behind_remote > 0 {
+                            println!("  ⬇ BehindRemote: {}", agg.behind_remote);
+                        }
+                        if agg.detached > 0 {
+                            println!("  ⚠ Detached: {}", agg.detached);
+                        }
+                        if agg.dirty > 0 {
+                            println!("  🔴 Dirty: {}", agg.dirty);
+                        }
+                        if agg.orphaned > 0 {
+                            println!("  💀 Orphaned: {}", agg.orphaned);
+                        }
+                        if agg.uninitialized > 0 {
+                            println!("  ⚪ Uninitialized: {}", agg.uninitialized);
+                        }
                     }
                     println!();
                     if state.submodules.is_empty() && state.total == 0 {
                         println!("  没有子模块");
                     } else {
-                        println!("  {:<20} {:<15} {:<10} {:<8} {}", "名称", "状态", "分支", "差异", "");
+                        println!(
+                            "  {:<20} {:<15} {:<10} {:<8}",
+                            "名称", "状态", "分支", "差异"
+                        );
                         for sm in &state.submodules {
                             let diff = if sm.ahead_count > 0 && sm.behind_count > 0 {
                                 format!("+{}/-{}", sm.ahead_count, sm.behind_count)
@@ -220,7 +238,10 @@ fn main() {
         } => {
             let root = resolve_path(&repo);
             if dry_run {
-                println!("[预览] 添加子模块: url={}, path={}, branch={}", url, path, branch);
+                println!(
+                    "[预览] 添加子模块: url={}, path={}, branch={}",
+                    url, path, branch
+                );
                 return;
             }
             let editor = GitSubmoduleEditor::new(root);
@@ -283,11 +304,7 @@ fn main() {
             let editor = GitSubmoduleEditor::new(root);
             exec(editor.sync_all_to_parent());
         }
-        Commands::Checkout {
-            name,
-            branch,
-            repo,
-        } => {
+        Commands::Checkout { name, branch, repo } => {
             let root = resolve_path(&repo);
             if dry_run {
                 println!("[预览] 切换子模块 '{}' 到分支 '{}'", name, branch);
@@ -296,11 +313,7 @@ fn main() {
             let editor = GitSubmoduleEditor::new(root);
             exec(editor.checkout_branch(&name, &branch));
         }
-        Commands::Branch {
-            name,
-            branch,
-            repo,
-        } => {
+        Commands::Branch { name, branch, repo } => {
             let root = resolve_path(&repo);
             if dry_run {
                 println!("[预览] 在子模块 '{}' 创建并切换到分支 '{}'", name, branch);
@@ -327,7 +340,12 @@ fn main() {
         } => {
             let root = resolve_path(&path);
             let editor = GitSubmoduleEditor::new(root);
-            match editor.list_history(limit, submodule.as_deref(), start.as_deref(), end.as_deref()) {
+            match editor.list_history(
+                limit,
+                submodule.as_deref(),
+                start.as_deref(),
+                end.as_deref(),
+            ) {
                 Ok(records) => {
                     if records.is_empty() {
                         println!("没有操作历史记录");

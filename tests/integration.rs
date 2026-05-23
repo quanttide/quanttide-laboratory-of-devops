@@ -19,28 +19,29 @@ fn init_repo(path: &Path) -> git2::Repository {
     std::fs::write(path.join("README.md"), "# test\n").unwrap();
 
     let sig = git2::Signature::now("test", "test@test.com").unwrap();
-    let mut index = repo.index().unwrap();
-    index.add_path(Path::new("README.md")).unwrap();
-    let tree_id = index.write_tree().unwrap();
-    let tree = repo.find_tree(tree_id).unwrap();
-    repo.commit(Some("HEAD"), &sig, &sig, "initial commit", &tree, &[])
-        .unwrap();
 
-    std::fs::write(path.join("file.txt"), "content\n").unwrap();
-    let mut index = repo.index().unwrap();
-    index.add_path(Path::new("file.txt")).unwrap();
-    let tree_id = index.write_tree().unwrap();
-    let tree = repo.find_tree(tree_id).unwrap();
-    let head = repo.head().unwrap().peel_to_commit().unwrap();
-    repo.commit(
-        Some("HEAD"),
-        &sig,
-        &sig,
-        "second commit",
-        &tree,
-        &[&head],
-    )
-    .unwrap();
+    // First commit
+    {
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new("README.md")).unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "initial commit", &tree, &[])
+            .unwrap();
+    }
+
+    // Second commit
+    {
+        std::fs::write(path.join("file.txt"), "content\n").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new("file.txt")).unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        let head = repo.head().unwrap().peel_to_commit().unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "second commit", &tree, &[&head])
+            .unwrap();
+    }
+
     repo
 }
 
@@ -106,7 +107,11 @@ fn test_scan_gitmodules_but_not_git_repo() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path().join("fake-repo");
     std::fs::create_dir(&dir).unwrap();
-    std::fs::write(dir.join(".gitmodules"), "[submodule \"x\"]\n\tpath = x\n\turl = https://x\n").unwrap();
+    std::fs::write(
+        dir.join(".gitmodules"),
+        "[submodule \"x\"]\n\tpath = x\n\turl = https://x\n",
+    )
+    .unwrap();
     // .gitmodules exists but the dir isn't a git repo → should error
     let result = RepoState::scan(&dir);
     assert!(result.is_err());
@@ -185,7 +190,9 @@ fn test_update_single_clean() {
     let tmp = tempfile::tempdir().unwrap();
     let (remote_path, parent_path) = setup_repo_pair(&tmp);
     let editor = add_submodule(&parent_path, &remote_path, "lib-u1");
-    editor.update_single("lib-u1", UpdateStrategy::FastForward).unwrap();
+    editor
+        .update_single("lib-u1", UpdateStrategy::FastForward)
+        .unwrap();
 }
 
 #[test]
@@ -212,7 +219,12 @@ fn test_sync_to_parent() {
     let editor = add_submodule(&parent_path, &remote_path, "lib-sync");
     // Make a new commit in the submodule
     let sub_repo = git2::Repository::open(&parent_path.join("lib-sync")).unwrap();
-    commit_file(&sub_repo, Path::new("new.txt"), "content\n", "submodule commit");
+    commit_file(
+        &sub_repo,
+        Path::new("new.txt"),
+        "content\n",
+        "submodule commit",
+    );
     editor.sync_to_parent("lib-sync").unwrap();
     let state = RepoState::scan(&parent_path).unwrap();
     assert_eq!(state.total, 1);
@@ -237,7 +249,9 @@ fn test_full_lifecycle() {
     let tmp = tempfile::tempdir().unwrap();
     let (remote_path, parent_path) = setup_repo_pair(&tmp);
     let editor = add_submodule(&parent_path, &remote_path, "lib-life");
-    editor.update_single("lib-life", UpdateStrategy::FastForward).unwrap();
+    editor
+        .update_single("lib-life", UpdateStrategy::FastForward)
+        .unwrap();
     editor.sync_to_parent("lib-life").unwrap();
     editor.retire_submodule("lib-life").unwrap();
     assert_eq!(RepoState::scan(&parent_path).unwrap().total, 0);
@@ -385,8 +399,10 @@ fn test_create_branch() {
     editor.create_branch("lib-br", "develop").unwrap();
     // Verify the branch exists
     let sub_repo = git2::Repository::open(&parent_path.join("lib-br")).unwrap();
-    let branch = sub_repo.find_branch("develop", git2::BranchType::Local).unwrap();
-    assert_eq!(branch.0.name().unwrap(), Some("develop"));
+    let branch = sub_repo
+        .find_branch("develop", git2::BranchType::Local)
+        .unwrap();
+    assert_eq!(branch.name().unwrap(), Some("develop"));
 }
 
 #[test]
@@ -431,7 +447,12 @@ fn test_history_logged_on_sync() {
     let (remote_path, parent_path) = setup_repo_pair(&tmp);
     let editor = add_submodule(&parent_path, &remote_path, "lib-h2");
     let sub_repo = git2::Repository::open(&parent_path.join("lib-h2")).unwrap();
-    commit_file(&sub_repo, Path::new("h.txt"), "h\n", "commit for history test");
+    commit_file(
+        &sub_repo,
+        Path::new("h.txt"),
+        "h\n",
+        "commit for history test",
+    );
     editor.sync_to_parent("lib-h2").unwrap();
     let db = HistoryDb::open(&parent_path).unwrap();
     let sync_ops = db.list_operations(10, Some("lib-h2"), None, None).unwrap();
@@ -459,7 +480,10 @@ fn test_history_db_file_created() {
     let (remote_path, parent_path) = setup_repo_pair(&tmp);
     let _editor = add_submodule(&parent_path, &remote_path, "lib-h4");
     let db_path = parent_path.join(".git").join("kse").join("history.db");
-    assert!(db_path.exists(), "history.db should exist after editor init");
+    assert!(
+        db_path.exists(),
+        "history.db should exist after editor init"
+    );
 }
 
 #[test]
@@ -489,8 +513,14 @@ fn test_health_check_reports_issues() {
     // Make it dirty
     std::fs::write(parent_path.join("lib-hc1").join("d.txt"), "d").unwrap();
     let issues = editor.health_check().unwrap();
-    let dirty_issues: Vec<_> = issues.iter().filter(|i| i.status == SubmoduleStatus::Dirty).collect();
-    assert!(!dirty_issues.is_empty(), "dirty submodule should produce issue");
+    let dirty_issues: Vec<_> = issues
+        .iter()
+        .filter(|i| i.status == SubmoduleStatus::Dirty)
+        .collect();
+    assert!(
+        !dirty_issues.is_empty(),
+        "dirty submodule should produce issue"
+    );
 }
 
 #[test]
@@ -500,10 +530,16 @@ fn test_health_check_clean_returns_no_issues() {
     let (remote_path, parent_path) = setup_repo_pair(&tmp);
     let editor = add_submodule(&parent_path, &remote_path, "lib-hc2");
     let issues = editor.health_check().unwrap();
-    let clean_issues: Vec<_> = issues.iter().filter(|i| i.status != SubmoduleStatus::Clean).collect();
+    let clean_issues: Vec<_> = issues
+        .iter()
+        .filter(|i| i.status != SubmoduleStatus::Clean)
+        .collect();
     // After fresh add, all should be Clean → no non-Clean issues
     // (ignore AheadOfParent which can appear if git2 creates extra commits)
-    let real_issues: Vec<_> = clean_issues.iter().filter(|i| i.status != SubmoduleStatus::AheadOfParent).collect();
+    let real_issues: Vec<_> = clean_issues
+        .iter()
+        .filter(|i| i.status != SubmoduleStatus::AheadOfParent)
+        .collect();
     assert!(real_issues.is_empty());
 }
 
@@ -515,7 +551,9 @@ fn test_update_with_rebase_strategy() {
     let tmp = tempfile::tempdir().unwrap();
     let (remote_path, parent_path) = setup_repo_pair(&tmp);
     let editor = add_submodule(&parent_path, &remote_path, "lib-rebase");
-    editor.update_single("lib-rebase", UpdateStrategy::Rebase).unwrap();
+    editor
+        .update_single("lib-rebase", UpdateStrategy::Rebase)
+        .unwrap();
     let state = RepoState::scan(&parent_path).unwrap();
     assert!(!state.submodules.is_empty());
 }
@@ -526,7 +564,9 @@ fn test_update_with_merge_strategy() {
     let tmp = tempfile::tempdir().unwrap();
     let (remote_path, parent_path) = setup_repo_pair(&tmp);
     let editor = add_submodule(&parent_path, &remote_path, "lib-merge");
-    editor.update_single("lib-merge", UpdateStrategy::Merge).unwrap();
+    editor
+        .update_single("lib-merge", UpdateStrategy::Merge)
+        .unwrap();
     let state = RepoState::scan(&parent_path).unwrap();
     assert!(!state.submodules.is_empty());
 }

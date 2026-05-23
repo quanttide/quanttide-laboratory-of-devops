@@ -22,10 +22,7 @@ pub fn generate_ci_script(state: &RepoState, format: &str) -> String {
     }
 }
 
-fn generate_shell_script(
-    _all: &[Submodule],
-    needs_update: &[&Submodule],
-) -> String {
+fn generate_shell_script(_all: &[Submodule], needs_update: &[&Submodule]) -> String {
     let mut s = String::new();
     s.push_str("#!/bin/bash\n");
     s.push_str("# KSE 自动生成的子模块更新脚本\n");
@@ -44,10 +41,7 @@ fn generate_shell_script(
     s
 }
 
-fn generate_github_actions(
-    _all: &[Submodule],
-    needs_update: &[&Submodule],
-) -> String {
+fn generate_github_actions(_all: &[Submodule], needs_update: &[&Submodule]) -> String {
     let mut s = String::new();
     s.push_str("name: Update Submodules\n\n");
     s.push_str("on:\n  workflow_dispatch:\n  schedule:\n    - cron: '0 6 * * 1'\n\n");
@@ -75,10 +69,7 @@ fn generate_github_actions(
     s
 }
 
-fn generate_gitlab_ci(
-    _all: &[Submodule],
-    needs_update: &[&Submodule],
-) -> String {
+fn generate_gitlab_ci(_all: &[Submodule], needs_update: &[&Submodule]) -> String {
     let mut s = String::new();
     s.push_str("stages:\n  - update\n\nupdate-submodules:\n");
     s.push_str("  stage: update\n");
@@ -101,32 +92,44 @@ fn generate_gitlab_ci(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::CommitHash;
+    use std::path::PathBuf;
 
-    fn make_state(submodules: Vec<(SubmoduleStatus, &str)>) -> RepoState {
+    fn make_state(input: Vec<(SubmoduleStatus, &str)>) -> RepoState {
+        let total = input.len();
+        let clean_count = input
+            .iter()
+            .filter(|(s, _)| *s == SubmoduleStatus::Clean)
+            .count();
+        let needs_attention: Vec<String> = input
+            .iter()
+            .filter(|(s, _)| *s != SubmoduleStatus::Clean)
+            .map(|(_, n)| n.to_string())
+            .collect();
+
+        let submodules: Vec<Submodule> = input
+            .into_iter()
+            .map(|(status, name)| Submodule {
+                name: name.into(),
+                path: PathBuf::from(name),
+                url: format!("https://example.com/{}.git", name),
+                tracked_branch: "main".into(),
+                parent_pointer: CommitHash::default(),
+                local_head: CommitHash::default(),
+                remote_head: CommitHash::default(),
+                status,
+                ahead_count: 0,
+                behind_count: 0,
+                remote_unreachable: false,
+            })
+            .collect();
+
         RepoState {
             root_path: "/tmp/repo".into(),
-            submodules: submodules
-                .into_iter()
-                .map(|(status, name)| Submodule {
-                    name: name.into(),
-                    path: PathBuf::from(name),
-                    url: format!("https://example.com/{}.git", name),
-                    tracked_branch: "main".into(),
-                    parent_pointer: CommitHash::default(),
-                    local_head: CommitHash::default(),
-                    remote_head: CommitHash::default(),
-                    status,
-                    ahead_count: 0,
-                    behind_count: 0,
-                })
-                .collect(),
-            total: submodules.len() as usize,
-            clean_count: submodules.iter().filter(|(s, _)| *s == SubmoduleStatus::Clean).count(),
-            needs_attention: submodules
-                .iter()
-                .filter(|(s, _)| *s != SubmoduleStatus::Clean)
-                .map(|(_, n)| n.to_string())
-                .collect(),
+            submodules,
+            total,
+            clean_count,
+            needs_attention,
         }
     }
 
@@ -159,9 +162,7 @@ mod tests {
 
     #[test]
     fn test_github_actions_format() {
-        let state = make_state(vec![
-            (SubmoduleStatus::BehindRemote, "lib-x"),
-        ]);
+        let state = make_state(vec![(SubmoduleStatus::BehindRemote, "lib-x")]);
         let script = generate_ci_script(&state, "github");
         assert!(script.contains("name: Update Submodules"));
         assert!(script.contains("actions/checkout@v4"));
@@ -171,9 +172,7 @@ mod tests {
 
     #[test]
     fn test_github_actions_all_clean() {
-        let state = make_state(vec![
-            (SubmoduleStatus::Clean, "lib-a"),
-        ]);
+        let state = make_state(vec![(SubmoduleStatus::Clean, "lib-a")]);
         let script = generate_ci_script(&state, "github");
         assert!(script.contains("name: Update Submodules"));
         assert!(script.contains("health-check"));
@@ -182,9 +181,7 @@ mod tests {
 
     #[test]
     fn test_gitlab_ci_format() {
-        let state = make_state(vec![
-            (SubmoduleStatus::BehindRemote, "lib-y"),
-        ]);
+        let state = make_state(vec![(SubmoduleStatus::BehindRemote, "lib-y")]);
         let script = generate_ci_script(&state, "gitlab");
         assert!(script.contains("stages:"));
         assert!(script.contains("update-submodules:"));
@@ -194,9 +191,7 @@ mod tests {
 
     #[test]
     fn test_all_formats_produce_output() {
-        let state = make_state(vec![
-            (SubmoduleStatus::BehindRemote, "lib-z"),
-        ]);
+        let state = make_state(vec![(SubmoduleStatus::BehindRemote, "lib-z")]);
         for fmt in &["shell", "github", "gitlab"] {
             let script = generate_ci_script(&state, fmt);
             assert!(!script.is_empty(), "format {} should produce output", fmt);

@@ -37,17 +37,26 @@ mod tests {
 
     #[test]
     fn test_update_strategy_fast_forward() {
-        assert_eq!(UpdateStrategy::FastForward.to_git2_update(), git2::SubmoduleUpdate::Checkout);
+        assert_eq!(
+            UpdateStrategy::FastForward.to_git2_update(),
+            git2::SubmoduleUpdate::Checkout
+        );
     }
 
     #[test]
     fn test_update_strategy_rebase() {
-        assert_eq!(UpdateStrategy::Rebase.to_git2_update(), git2::SubmoduleUpdate::Rebase);
+        assert_eq!(
+            UpdateStrategy::Rebase.to_git2_update(),
+            git2::SubmoduleUpdate::Rebase
+        );
     }
 
     #[test]
     fn test_update_strategy_merge() {
-        assert_eq!(UpdateStrategy::Merge.to_git2_update(), git2::SubmoduleUpdate::Merge);
+        assert_eq!(
+            UpdateStrategy::Merge.to_git2_update(),
+            git2::SubmoduleUpdate::Merge
+        );
     }
 
     #[test]

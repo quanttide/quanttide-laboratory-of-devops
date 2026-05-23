@@ -84,7 +84,7 @@ impl RepoState {
         let mut submodules = Vec::new();
 
         let mut git_submodules = repo.submodules()?;
-        git_submodules.sort_by(|a, b| a.name().cmp(b.name()));
+        git_submodules.sort_by(|a, b| a.name().cmp(&b.name()));
 
         for sm in &git_submodules {
             let name = sm.name().unwrap_or("unknown").to_string();
@@ -93,15 +93,34 @@ impl RepoState {
             let url = sm.url().unwrap_or("").to_string();
             let branch = sm.branch().unwrap_or("main").to_string();
 
-            let raw_status = sm.status(false)?;
-            let is_uninitialized =
-                raw_status.contains(git2::SubmoduleStatus::WD_UNINITIALIZED);
-            let is_dirty = raw_status.contains(git2::SubmoduleStatus::WD_DIRTY);
+            let raw_status = repo.submodule_status(&name, git2::SubmoduleIgnore::None)?;
+            let is_uninitialized = raw_status.is_wd_uninitialized();
+            let is_dirty = raw_status.is_wd_modified()
+                || raw_status.is_index_modified()
+                || raw_status.is_wd_untracked();
 
-            let parent_pointer = CommitHash(sm.head_id().to_string());
+            // 父仓库记录的 commit
+            let head_oid = sm.head_id().unwrap_or_else(git2::Oid::zero);
+            let parent_pointer = CommitHash(head_oid.to_string());
 
-            let (local_head, remote_head, is_detached, ahead_count, behind_count, is_orphaned, remote_unreachable) = if is_uninitialized {
-                (CommitHash::default(), CommitHash::default(), false, 0, 0, false, false)
+            let (
+                local_head,
+                remote_head,
+                is_detached,
+                ahead_count,
+                behind_count,
+                is_orphaned,
+                remote_unreachable,
+            ) = if is_uninitialized {
+                (
+                    CommitHash::default(),
+                    CommitHash::default(),
+                    false,
+                    0,
+                    0,
+                    false,
+                    false,
+                )
             } else {
                 match git2::Repository::open(&full_sm_path) {
                     Ok(sub_repo) => {
@@ -125,33 +144,57 @@ impl RepoState {
                             .map(|o| (CommitHash(o.to_string()), false))
                             .unwrap_or_else(|| (CommitHash::default(), true));
 
-                        let ahead = if unreachable { 0 } else {
-                            count_between_opt(&sub_repo, parse_oid(&parent_pointer), parse_oid(&local))
+                        let ahead = if unreachable {
+                            0
+                        } else {
+                            count_between_opt(
+                                &sub_repo,
+                                parse_oid(&parent_pointer),
+                                parse_oid(&local),
+                            )
                         };
-                        let behind = if unreachable { 0 } else {
+                        let behind = if unreachable {
+                            0
+                        } else {
                             count_between_opt(&sub_repo, parse_oid(&local), parse_oid(&remote))
                         };
 
-                        let orphaned = if !unreachable && remote != CommitHash::default()
+                        let orphaned = if !unreachable
+                            && remote != CommitHash::default()
                             && parent_pointer != remote
                         {
                             let p = parse_oid(&parent_pointer);
                             let r = parse_oid(&remote);
                             match (p, r) {
-                                (Some(p_oid), Some(r_oid)) => {
-                                    sub_repo.merge_base(r_oid, p_oid)
-                                        .map(|base| base != p_oid)
-                                        .unwrap_or(false)
-                                }
+                                (Some(p_oid), Some(r_oid)) => sub_repo
+                                    .merge_base(r_oid, p_oid)
+                                    .map(|base| base != p_oid)
+                                    .unwrap_or(false),
                                 _ => false,
                             }
                         } else {
                             false
                         };
 
-                        (local, remote, detached, ahead, behind, orphaned, unreachable)
+                        (
+                            local,
+                            remote,
+                            detached,
+                            ahead,
+                            behind,
+                            orphaned,
+                            unreachable,
+                        )
                     }
-                    Err(_) => (CommitHash::default(), CommitHash::default(), false, 0, 0, false, false),
+                    Err(_) => (
+                        CommitHash::default(),
+                        CommitHash::default(),
+                        false,
+                        0,
+                        0,
+                        false,
+                        false,
+                    ),
                 }
             };
 
@@ -167,8 +210,6 @@ impl RepoState {
                 SubmoduleStatus::AheadOfParent
             } else if behind_count > 0 && !remote_unreachable {
                 SubmoduleStatus::BehindRemote
-            } else if local_head == parent_pointer && (remote_unreachable || local_head == remote_head) {
-                SubmoduleStatus::Clean
             } else {
                 SubmoduleStatus::Clean
             };
@@ -208,7 +249,9 @@ impl RepoState {
         })
     }
 
-    pub fn scan_all(root: &std::path::Path) -> Result<(Vec<Submodule>, AggregateStatus), Box<dyn std::error::Error>> {
+    pub fn scan_all(
+        root: &std::path::Path,
+    ) -> Result<(Vec<Submodule>, AggregateStatus), Box<dyn std::error::Error>> {
         let state = Self::scan(root)?;
         let agg = AggregateStatus::from_submodules(&state.submodules);
         Ok((state.submodules, agg))
@@ -229,20 +272,34 @@ pub struct AggregateStatus {
 
 impl AggregateStatus {
     pub fn from_submodules(submodules: &[Submodule]) -> Self {
-        let mut agg = AggregateStatus::default();
-        agg.total = submodules.len();
+        let mut clean = 0;
+        let mut ahead = 0;
+        let mut behind = 0;
+        let mut detached = 0;
+        let mut dirty = 0;
+        let mut orphaned = 0;
+        let mut uninit = 0;
         for sm in submodules {
             match sm.status {
-                SubmoduleStatus::Clean => agg.clean += 1,
-                SubmoduleStatus::AheadOfParent => agg.ahead_of_parent += 1,
-                SubmoduleStatus::BehindRemote => agg.behind_remote += 1,
-                SubmoduleStatus::Detached => agg.detached += 1,
-                SubmoduleStatus::Dirty => agg.dirty += 1,
-                SubmoduleStatus::Orphaned => agg.orphaned += 1,
-                SubmoduleStatus::Uninitialized => agg.uninitialized += 1,
+                SubmoduleStatus::Clean => clean += 1,
+                SubmoduleStatus::AheadOfParent => ahead += 1,
+                SubmoduleStatus::BehindRemote => behind += 1,
+                SubmoduleStatus::Detached => detached += 1,
+                SubmoduleStatus::Dirty => dirty += 1,
+                SubmoduleStatus::Orphaned => orphaned += 1,
+                SubmoduleStatus::Uninitialized => uninit += 1,
             }
         }
-        agg
+        AggregateStatus {
+            total: submodules.len(),
+            clean,
+            ahead_of_parent: ahead,
+            behind_remote: behind,
+            detached,
+            dirty,
+            orphaned,
+            uninitialized: uninit,
+        }
     }
 }
 
@@ -255,10 +312,19 @@ fn count_between_opt(
     from: Option<git2::Oid>,
     to: Option<git2::Oid>,
 ) -> usize {
-    let (Some(from), Some(to)) = (from, to) else { return 0 };
-    if from == to { return 0 }
-    let mut walk = match repo.revwalk() { Ok(w) => w, Err(_) => return 0 };
-    if walk.push(to).is_err() || walk.hide(from).is_err() { return 0 }
+    let (Some(from), Some(to)) = (from, to) else {
+        return 0;
+    };
+    if from == to {
+        return 0;
+    }
+    let mut walk = match repo.revwalk() {
+        Ok(w) => w,
+        Err(_) => return 0,
+    };
+    if walk.push(to).is_err() || walk.hide(from).is_err() {
+        return 0;
+    }
     walk.count()
 }
 
@@ -286,16 +352,25 @@ mod tests {
             SubmoduleStatus::BehindRemote,
             SubmoduleStatus::AheadOfParent,
         ];
-        for s in &statuses { assert!(s.priority() < SubmoduleStatus::Clean.priority()); }
+        for s in &statuses {
+            assert!(s.priority() < SubmoduleStatus::Clean.priority());
+        }
     }
 
     #[test]
     fn test_all_priorities_are_unique() {
         let priorities: Vec<u8> = [
-            SubmoduleStatus::Dirty, SubmoduleStatus::Orphaned, SubmoduleStatus::Detached,
-            SubmoduleStatus::Uninitialized, SubmoduleStatus::BehindRemote, SubmoduleStatus::AheadOfParent,
+            SubmoduleStatus::Dirty,
+            SubmoduleStatus::Orphaned,
+            SubmoduleStatus::Detached,
+            SubmoduleStatus::Uninitialized,
+            SubmoduleStatus::BehindRemote,
+            SubmoduleStatus::AheadOfParent,
             SubmoduleStatus::Clean,
-        ].iter().map(|s| s.priority()).collect();
+        ]
+        .iter()
+        .map(|s| s.priority())
+        .collect();
         let mut sorted = priorities.clone();
         sorted.sort();
         sorted.dedup();
@@ -308,9 +383,18 @@ mod tests {
         assert_eq!(format!("{:?}", SubmoduleStatus::Dirty), "Dirty");
         assert_eq!(format!("{:?}", SubmoduleStatus::Orphaned), "Orphaned");
         assert_eq!(format!("{:?}", SubmoduleStatus::Detached), "Detached");
-        assert_eq!(format!("{:?}", SubmoduleStatus::Uninitialized), "Uninitialized");
-        assert_eq!(format!("{:?}", SubmoduleStatus::AheadOfParent), "AheadOfParent");
-        assert_eq!(format!("{:?}", SubmoduleStatus::BehindRemote), "BehindRemote");
+        assert_eq!(
+            format!("{:?}", SubmoduleStatus::Uninitialized),
+            "Uninitialized"
+        );
+        assert_eq!(
+            format!("{:?}", SubmoduleStatus::AheadOfParent),
+            "AheadOfParent"
+        );
+        assert_eq!(
+            format!("{:?}", SubmoduleStatus::BehindRemote),
+            "BehindRemote"
+        );
     }
 
     #[test]
@@ -368,11 +452,17 @@ mod tests {
     #[test]
     fn test_submodule_builder() {
         let sm = Submodule {
-            name: "test".into(), path: PathBuf::from("libs/test"),
-            url: "https://example.com/test.git".into(), tracked_branch: "main".into(),
-            parent_pointer: CommitHash("aaa".into()), local_head: CommitHash("bbb".into()),
-            remote_head: CommitHash("ccc".into()), status: SubmoduleStatus::BehindRemote,
-            ahead_count: 0, behind_count: 3, remote_unreachable: false,
+            name: "test".into(),
+            path: PathBuf::from("libs/test"),
+            url: "https://example.com/test.git".into(),
+            tracked_branch: "main".into(),
+            parent_pointer: CommitHash("aaa".into()),
+            local_head: CommitHash("bbb".into()),
+            remote_head: CommitHash("ccc".into()),
+            status: SubmoduleStatus::BehindRemote,
+            ahead_count: 0,
+            behind_count: 3,
+            remote_unreachable: false,
         };
         assert_eq!(sm.name, "test");
         assert_eq!(sm.behind_count, 3);
@@ -390,18 +480,45 @@ mod tests {
     #[test]
     fn test_aggregate_status_from_submodules() {
         let sms = vec![
-            Submodule { name: "a".into(), path: PathBuf::new(), url: String::new(), tracked_branch: "main".into(),
-                parent_pointer: CommitHash::default(), local_head: CommitHash::default(),
-                remote_head: CommitHash::default(), status: SubmoduleStatus::Clean,
-                ahead_count: 0, behind_count: 0, remote_unreachable: false },
-            Submodule { name: "b".into(), path: PathBuf::new(), url: String::new(), tracked_branch: "main".into(),
-                parent_pointer: CommitHash::default(), local_head: CommitHash::default(),
-                remote_head: CommitHash::default(), status: SubmoduleStatus::Dirty,
-                ahead_count: 0, behind_count: 0, remote_unreachable: false },
-            Submodule { name: "c".into(), path: PathBuf::new(), url: String::new(), tracked_branch: "main".into(),
-                parent_pointer: CommitHash::default(), local_head: CommitHash::default(),
-                remote_head: CommitHash::default(), status: SubmoduleStatus::Orphaned,
-                ahead_count: 0, behind_count: 0, remote_unreachable: false },
+            Submodule {
+                name: "a".into(),
+                path: PathBuf::new(),
+                url: String::new(),
+                tracked_branch: "main".into(),
+                parent_pointer: CommitHash::default(),
+                local_head: CommitHash::default(),
+                remote_head: CommitHash::default(),
+                status: SubmoduleStatus::Clean,
+                ahead_count: 0,
+                behind_count: 0,
+                remote_unreachable: false,
+            },
+            Submodule {
+                name: "b".into(),
+                path: PathBuf::new(),
+                url: String::new(),
+                tracked_branch: "main".into(),
+                parent_pointer: CommitHash::default(),
+                local_head: CommitHash::default(),
+                remote_head: CommitHash::default(),
+                status: SubmoduleStatus::Dirty,
+                ahead_count: 0,
+                behind_count: 0,
+                remote_unreachable: false,
+            },
+            Submodule {
+                name: "c".into(),
+                path: PathBuf::new(),
+                url: String::new(),
+                tracked_branch: "main".into(),
+                parent_pointer: CommitHash::default(),
+                local_head: CommitHash::default(),
+                remote_head: CommitHash::default(),
+                status: SubmoduleStatus::Orphaned,
+                ahead_count: 0,
+                behind_count: 0,
+                remote_unreachable: false,
+            },
         ];
         let agg = AggregateStatus::from_submodules(&sms);
         assert_eq!(agg.total, 3);
@@ -415,8 +532,11 @@ mod tests {
     #[test]
     fn test_repo_state_empty() {
         let state = RepoState {
-            root_path: PathBuf::from("/tmp"), submodules: vec![],
-            total: 0, clean_count: 0, needs_attention: vec![],
+            root_path: PathBuf::from("/tmp"),
+            submodules: vec![],
+            total: 0,
+            clean_count: 0,
+            needs_attention: vec![],
         };
         assert_eq!(state.total, 0);
     }

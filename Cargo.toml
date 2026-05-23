@@ -14,7 +14,7 @@ name = "kse"
 path = "src/main.rs"
 
 [dependencies]
-git2 = { version = "0.19", features = ["vendored"] }
+git2 = { version = "0.19", features = ["vendored-libgit2"] }
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 rusqlite = { version = "0.31", features = ["bundled"] }

@@ -24,11 +24,26 @@ impl GitSubmoduleEditor {
     }
 
     fn log_ok(&self, action: &str, submodule: &str, detail: &str) {
-        self.history.log_operation(action, submodule, detail, true).ok();
+        self.history
+            .log_operation(action, submodule, detail, true)
+            .ok();
     }
 
     fn log_err(&self, action: &str, submodule: &str, detail: &str) {
-        self.history.log_operation(action, submodule, detail, false).ok();
+        self.history
+            .log_operation(action, submodule, detail, false)
+            .ok();
+    }
+
+    pub fn list_history(
+        &self,
+        limit: usize,
+        submodule: Option<&str>,
+        start_date: Option<&str>,
+        end_date: Option<&str>,
+    ) -> Result<Vec<OperationRecord>, Box<dyn std::error::Error>> {
+        self.history
+            .list_operations(limit, submodule, start_date, end_date)
     }
 }
 
@@ -43,18 +58,20 @@ impl SubmoduleEditor for GitSubmoduleEditor {
         path: &str,
         branch: &str,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let repo = git2::Repository::open(&self.root)?;
+        let mut repo = git2::Repository::open(&self.root)?;
 
         // 检测重复：检查同名或同路子模块是否已存在
-        let repo_submodules = repo.submodules()?;
-        for existing in &repo_submodules {
-            let en = existing.name().unwrap_or("");
-            if en == path {
-                return Err(format!("子模块 '{}' 已存在 (同名)", path).into());
-            }
-            let ep = existing.path();
-            if ep == Path::new(path) {
-                return Err(format!("路径 '{}' 已被子模块 '{}' 占用", path, en).into());
+        {
+            let repo_submodules = repo.submodules()?;
+            for existing in &repo_submodules {
+                let en = existing.name().unwrap_or("");
+                if en == path {
+                    return Err(format!("子模块 '{}' 已存在 (同名)", path).into());
+                }
+                let ep = existing.path();
+                if ep == Path::new(path) {
+                    return Err(format!("路径 '{}' 已被子模块 '{}' 占用", path, en).into());
+                }
             }
         }
 
@@ -68,22 +85,30 @@ impl SubmoduleEditor for GitSubmoduleEditor {
             return Err(format!("URL 不可达: {} — {}", url, msg).into());
         }
 
-        let mut sm = repo.submodule(url, Path::new(path), false)?;
-        sm.add_finalize()?;
-        sm.set_branch(branch)?;
-        let name = sm.name().unwrap_or(path);
-        self.log_ok("add", name, &format!("url={}, path={}, branch={}", url, path, branch));
+        let name = {
+            let mut sm = repo.submodule(url, Path::new(path), false)?;
+            sm.add_finalize()?;
+            let n = sm.name().unwrap_or(path).to_string();
+            n
+        };
+        repo.submodule_set_branch(path, branch)?;
+        self.log_ok(
+            "add",
+            &name,
+            &format!("url={}, path={}, branch={}", url, path, branch),
+        );
         println!("已添加子模块 '{}'", name);
         Ok(())
     }
 
     fn init_all(&self) -> Result<(), Box<dyn std::error::Error>> {
         let repo = git2::Repository::open(&self.root)?;
-        let submodules = repo.submodules()?;
+        let mut submodules = repo.submodules()?;
         let mut count = 0;
-        for sm in &submodules {
-            let status = sm.status(false)?;
-            if status.contains(git2::SubmoduleStatus::WD_UNINITIALIZED) {
+        for sm in &mut submodules {
+            let name = sm.name().unwrap_or("unknown");
+            let status = repo.submodule_status(name, git2::SubmoduleIgnore::None)?;
+            if status.is_wd_uninitialized() {
                 sm.init(false)?;
                 let name = sm.name().unwrap_or("unknown");
                 self.log_ok("init", name, "初始化子模块");
@@ -104,15 +129,18 @@ impl SubmoduleEditor for GitSubmoduleEditor {
         name: &str,
         strategy: UpdateStrategy,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let repo = git2::Repository::open(&self.root)?;
-        let mut sm = repo.find_submodule(name)?;
-        let status = sm.status(false)?;
-        if status.contains(git2::SubmoduleStatus::WD_DIRTY) {
-            let msg = format!("子模块 '{}' 有未提交的修改，请先提交或 stash", name);
-            self.log_err("update", name, &msg);
-            return Err(msg.into());
+        let mut repo = git2::Repository::open(&self.root)?;
+        {
+            let status = repo.submodule_status(name, git2::SubmoduleIgnore::None)?;
+            if status.is_wd_modified() || status.is_index_modified() || status.is_wd_untracked() {
+                let msg = format!("子模块 '{}' 有未提交的修改，请先提交或 stash", name);
+                self.log_err("update", name, &msg);
+                return Err(msg.into());
+            }
         }
-        sm.update(false, strategy.to_git2_update())?;
+        repo.submodule_set_update(name, strategy.to_git2_update())?;
+        let mut sm = repo.find_submodule(name)?;
+        sm.update(false, None::<&mut git2::SubmoduleUpdateOptions<'_>>)?;
         self.log_ok("update", name, &format!("strategy={:?}", strategy));
         println!("已更新子模块 '{}'", name);
         Ok(())
@@ -163,7 +191,7 @@ impl SubmoduleEditor for GitSubmoduleEditor {
     fn sync_all_to_parent(&self) -> Result<(), Box<dyn std::error::Error>> {
         let repo = git2::Repository::open(&self.root)?;
         let submodules = repo.submodules()?;
-        for sm in &submodules {
+        for sm in submodules.iter() {
             let name = sm.name().unwrap_or("unknown").to_string();
             match self.sync_to_parent(&name) {
                 Ok(()) => {}
@@ -240,8 +268,15 @@ impl SubmoduleEditor for GitSubmoduleEditor {
         let sm = repo.find_submodule(name)?;
         let url = sm.url().unwrap_or("").to_string();
         let sm_path = sm.path().to_path_buf();
-        let mut sm = repo.find_submodule(name)?;
-        sm.deinit(true)?;
+
+        // git submodule deinit -f <name>
+        let result = std::process::Command::new("git")
+            .args(["submodule", "deinit", "-f", name])
+            .current_dir(&self.root)
+            .output();
+        if let Err(e) = result {
+            eprintln!("警告: git submodule deinit 失败: {} (继续处理)", e);
+        }
 
         let gitmodules_path = self.root.join(".gitmodules");
         if gitmodules_path.exists() {
@@ -269,19 +304,10 @@ impl SubmoduleEditor for GitSubmoduleEditor {
         index.remove_path(&sm_path)?;
         index.write()?;
 
-        self.history.log_retire(name, &url, &sm_path.display().to_string(), "用户手动退役")?;
+        self.history
+            .log_retire(name, &url, &sm_path.display().to_string(), "用户手动退役")?;
         println!("已退役子模块 '{}'", name);
         Ok(())
-    }
-
-    pub fn list_history(
-        &self,
-        limit: usize,
-        submodule: Option<&str>,
-        start_date: Option<&str>,
-        end_date: Option<&str>,
-    ) -> Result<Vec<OperationRecord>, Box<dyn std::error::Error>> {
-        self.history.list_operations(limit, submodule, start_date, end_date)
     }
 
     fn health_check(&self) -> Result<Vec<HealthIssue>, Box<dyn std::error::Error>> {
@@ -404,18 +430,12 @@ pub(crate) fn describe_issue(status: &SubmoduleStatus) -> (String, String) {
             "处于游离 HEAD 状态".into(),
             "运行 checkout_branch 切换到跟踪分支".into(),
         ),
-        SubmoduleStatus::Dirty => (
-            "有未提交的修改".into(),
-            "提交或 stash 当前修改".into(),
-        ),
+        SubmoduleStatus::Dirty => ("有未提交的修改".into(), "提交或 stash 当前修改".into()),
         SubmoduleStatus::Orphaned => (
             "父仓库记录的 commit 在远程已不存在".into(),
             "需手动干预".into(),
         ),
-        SubmoduleStatus::Uninitialized => (
-            "尚未初始化".into(),
-            "运行 init 初始化子模块".into(),
-        ),
+        SubmoduleStatus::Uninitialized => ("尚未初始化".into(), "运行 init 初始化子模块".into()),
         SubmoduleStatus::Clean => unreachable!(),
     }
 }

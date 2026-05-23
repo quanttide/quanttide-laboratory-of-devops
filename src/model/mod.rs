@@ -68,7 +68,10 @@ impl RepoState {
             });
         }
 
-        let repo = git2::Repository::open(root)?;
+        let repo = match git2::Repository::open(root) {
+            Ok(r) => r,
+            Err(e) => return Err(format!("无法打开 Git 仓库 '{}': {}", root.display(), e).into()),
+        };
         let mut submodules = Vec::new();
 
         let mut git_submodules = repo.submodules()?;

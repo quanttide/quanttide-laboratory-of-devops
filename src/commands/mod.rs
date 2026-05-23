@@ -1,4 +1,4 @@
-use crate::model::{CommitHash, Submodule, SubmoduleStatus};
+use crate::model::SubmoduleStatus;
 use std::path::Path;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

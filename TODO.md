@@ -2,24 +2,24 @@
 
 ## Iteration 0：项目脚手架
 
-- [ ] **0.1** 初始化 Rust 项目，配置依赖
-  - [ ] `cargo init`（项目根目录）
-  - [ ] 添加 `git2`（vendored）、`clap`（derive）、`serde`（derive）依赖
-  - [ ] 验证 `cargo build` 通过
-- [ ] **0.2** 基础设施文件
-  - [ ] 添加 `.gitignore`（含 `/target`、`.DS_Store`、`*.swp`、`.vscode/`、`.idea/`）
-  - [ ] 添加 `rustfmt.toml`（max_width=100, tab_spaces=4, edition=2021）
-  - [ ] 验证 `cargo fmt --check` 通过
-- [ ] **0.3** 搭建目录结构
-  - [ ] 创建 `src/model/mod.rs`
-  - [ ] 创建 `src/commands/mod.rs`
-- [ ] **0.4** 配置 CI
-  - [ ] 创建 `.github/workflows/ci.yml`
-  - [ ] CI 步骤：checkout → setup Rust → cargo check → cargo test → cargo clippy
+- [x] **0.1** 初始化 Rust 项目，配置依赖
+  - [x] `cargo init`（项目根目录）
+  - [x] 添加 `git2`（vendored）、`clap`（derive）、`serde`（derive）依赖
+  - [ ] 验证 `cargo build` 通过（需本地 Rust 工具链）
+- [x] **0.2** 基础设施文件
+  - [x] 添加 `.gitignore`（含 `/target`、`.DS_Store`、`*.swp`、`.vscode/`、`.idea/`）
+  - [x] 添加 `rustfmt.toml`（max_width=100, tab_spaces=4, edition=2021）
+  - [ ] 验证 `cargo fmt --check` 通过（需本地 Rust 工具链）
+- [x] **0.3** 搭建目录结构
+  - [x] 创建 `src/model/mod.rs`
+  - [x] 创建 `src/commands/mod.rs`
+- [x] **0.4** 配置 CI
+  - [x] 创建 `.github/workflows/ci.yml`
+  - [x] CI 步骤：checkout → setup Rust → cargo check → cargo test → cargo clippy
   - [ ] 验证 CI 通过（触发一次 push）
-- [ ] **0.5** 空 CLI
-  - [ ] clap 定义 `kse` CLI，至少包含 `health-check` 子命令占位
-  - [ ] 验证 `cargo run -- --help` 输出帮助信息
+- [x] **0.5** 空 CLI
+  - [x] clap 定义 `kse` CLI，至少包含 `health-check` 子命令占位
+  - [ ] 验证 `cargo run -- --help` 输出帮助信息（需本地 Rust 工具链）
 
 **验证**：`cargo build && cargo test && cargo clippy -- -D warnings` 全部通过
 
@@ -29,45 +29,45 @@
 
 ### 1.1 模型定义
 
-- [ ] 定义 `CommitHash(String)` 新类型，实现 `Display`（截断 7 位）
-- [ ] 定义 `SubmoduleStatus` 枚举（7 种变体）
-  - [ ] Clean / AheadOfParent / BehindRemote / Detached / Dirty / Orphaned / Uninitialized
-  - [ ] 实现 `priority()` 方法（Dirty=0 > Orphaned=1 > Detached=2 > Uninitialized=3 > BehindRemote=4 > AheadOfParent=5 > Clean=6）
-- [ ] 定义 `Submodule` 结构体
-  - [ ] 字段：name / path / url / tracked_branch / parent_pointer / local_head / remote_head / status
-- [ ] 定义 `HealthIssue` 结构体（submodule_name / status / description / suggested_action）
+- [x] 定义 `CommitHash(String)` 新类型，实现 `Display`（截断 7 位）
+- [x] 定义 `SubmoduleStatus` 枚举（7 种变体）
+  - [x] Clean / AheadOfParent / BehindRemote / Detached / Dirty / Orphaned / Uninitialized
+  - [x] 实现 `priority()` 方法（Dirty=0 > Orphaned=1 > Detached=2 > Uninitialized=3 > BehindRemote=4 > AheadOfParent=5 > Clean=6）
+- [x] 定义 `Submodule` 结构体
+  - [x] 字段：name / path / url / tracked_branch / parent_pointer / local_head / remote_head / status
+- [x] 定义 `HealthIssue` 结构体（submodule_name / status / description / suggested_action）
 
 ### 1.2 RepoState
 
-- [ ] 定义 `RepoState` 结构体（root_path / submodules / total / clean_count / needs_attention）
-- [ ] 实现 `RepoState::scan(&Path)` 方法
-  - [ ] 检测 `.gitmodules` 是否存在，不存在则返回空状态
-  - [ ] `git2::Repository::open` 打开仓库
-  - [ ] `repo.submodules()` 获取子模块列表
-  - [ ] 对每个子模块读取：name / path / url / branch / head_id / status
-  - [ ] 根据 `SubmoduleStatus` flags 判定状态（优先：Uninitialized > Dirty > Clean）
-  - [ ] 填充 `total`、`clean_count`、`needs_attention` 统计
-- [ ] 实现 `SubmoduleEditor` trait（所有原子操作接口）
-- [ ] 实现 `UpdateStrategy` 枚举（FastForward / Rebase / Merge）
+- [x] 定义 `RepoState` 结构体（root_path / submodules / total / clean_count / needs_attention）
+- [x] 实现 `RepoState::scan(&Path)` 方法
+  - [x] 检测 `.gitmodules` 是否存在，不存在则返回空状态
+  - [x] `git2::Repository::open` 打开仓库
+  - [x] `repo.submodules()` 获取子模块列表
+  - [x] 对每个子模块读取：name / path / url / branch / head_id / status
+  - [x] 根据 `SubmoduleStatus` flags 判定状态（优先：Uninitialized > Dirty > Clean）
+  - [x] 填充 `total`、`clean_count`、`needs_attention` 统计
+- [x] 实现 `SubmoduleEditor` trait（所有原子操作接口）
+- [x] 实现 `UpdateStrategy` 枚举（FastForward / Rebase / Merge）
 
 ### 1.3 CLI 命令
 
-- [ ] `kse health-check [path]` — 扫描并表格输出
-  - [ ] 路径默认为 `.`
-  - [ ] 输出仓库路径、子模块总数、干净数、需关注列表
-  - [ ] 逐行输出：名称 / 状态 / 跟踪分支
-  - [ ] 无子模块时输出"没有子模块"提示
-- [ ] 错误处理：路径不存在 → 友好提示 + exit(1)
-- [ ] 错误处理：非 Git 仓库 → 友好提示 + exit(1)
+- [x] `kse health-check [path]` — 扫描并表格输出
+  - [x] 路径默认为 `.`
+  - [x] 输出仓库路径、子模块总数、干净数、需关注列表
+  - [x] 逐行输出：名称 / 状态 / 跟踪分支
+  - [x] 无子模块时输出"没有子模块"提示
+- [x] 错误处理：路径不存在 → 友好提示 + exit(1)
+- [x] 错误处理：非 Git 仓库 → 友好提示 + exit(1)
 
 ### 1.4 单元测试
 
 **模型层测试**（不依赖 Git 仓库）：
 
-- [ ] `test_status_priority_ordering` — 验证优先级排序正确
-- [ ] `test_clean_is_lowest_priority` — Clean 优先级最低
-- [ ] `test_commit_hash_display_truncates` — Display 截断 7 位
-- [ ] `test_commit_hash_equality` — PartialEq 正确
+- [x] `test_status_priority_ordering` — 验证优先级排序正确
+- [x] `test_clean_is_lowest_priority` — Clean 优先级最低
+- [x] `test_commit_hash_display_truncates` — Display 截断 7 位
+- [x] `test_commit_hash_equality` — PartialEq 正确
 
 **验证**：`cargo test` 全部通过
 

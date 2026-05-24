@@ -9,5 +9,13 @@ authors = ["Guo-Zhang <zhangguo@quanttide.com>"]
 name = "qtcloud-devops-code"
 path = "src/main.rs"
 
+[lib]
+name = "qtcloud_devops_code"
+path = "src/lib.rs"
+
 [dependencies]
 clap = { version = "4", features = ["derive"] }
+regex = "1"
+
+[dev-dependencies]
+tempfile = "3"

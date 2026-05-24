@@ -1,60 +1,98 @@
-# TODO — Release 命令
+# TODO — 软件发布生命周期管理
 
-## P0 — 核心实现
+## Iter 1：状态机核心命令
 
-### 1. 新建 `src/commands/release.rs`
+### 1. 新建 `src/model/release.rs`
 
-- [ ] `precheck(version, changelog, release_only) -> Result<Vec<String>>`
-  - [ ] 版本号格式校验（vX.Y.Z 或 pkg/vX.Y.Z）
-  - [ ] CHANGELOG.md 存在性检查
-  - [ ] CHANGELOG 内容包含对应版本条目
-  - [ ] `--release-only` 时 tag 已存在
-  - [ ] 工作区干净（`git status --porcelain`）
-  - [ ] 在 main/master/release/* 分支上
-- [ ] `extract_notes(version, changelog) -> Option<String>`
-  - [ ] 解析 `## [{ver}]` 段落内容
-- [ ] `confirm_release(version, notes, yes) -> bool`
-  - [ ] 版本 + Release Notes 预览
-  - [ ] 用户交互确认 / `-y` 跳过
-- [ ] `create_tag(version) -> bool`
-  - [ ] `git tag <version>`
-- [ ] `push_tag(version) -> bool`
-  - [ ] `git push origin <version>`
-- [ ] `get_remote_repo() -> Option<String>`
-  - [ ] 从 `git remote get-url origin` 解析 owner/name
-- [ ] `create_release(version, notes, repo) -> bool`
-  - [ ] `gh release create <version> --title <version> --notes <notes> --repo <repo>`
-- [ ] `rollback_tag(version)`
-  - [ ] 本地删除 + 远程删除已推送的 tag
-- [ ] `run(version, changelog, dry_run, tag_only, release_only, yes) -> i32`
-  - [ ] 编排：precheck → confirm → tag+push → release → rollback
+- [ ] `ReleaseStatus` 枚举：`Staged`, `Published`, `Cancelled`, `Retired`
+- [ ] `ReleaseAttempt` 结构体：id (UUID), version, status, created_at, updated_at, reason
+- [ ] `TransitionError` 枚举：非法状态转换校验
+- [ ] `validate_transition(from: &ReleaseStatus, to: &ReleaseStatus) -> Result<()>` 函数
+- [ ] 单元测试：所有合法/非法转换路径
+- [ ] 单元测试：状态 `Debug + Clone + PartialEq`
 
-### 2. 修改 `src/commands/mod.rs`
+### 2. 状态持久化
 
-- [ ] `pub mod release;` 声明
+- [ ] `Storage` trait：`save(attempt)`, `load(version) -> Option<ReleaseAttempt>`, `list() -> Vec<ReleaseAttempt>`
+- [ ] `FileStorage` 实现：JSON 文件存储，路径 `.qtcloud/releases.json`
+- [ ] 事件溯源：每次转换追加记录到 `.qtcloud/release-events.jsonl`
+- [ ] 单元测试：持久化读写 + 事件追加
 
-### 3. 修改 `src/main.rs`
+### 3. `stage <version>` 命令
 
-- [ ] 新增 `Commands::Release` 变体
-- [ ] 解析 `release` 子命令参数
-- [ ] 调用 `release::run()`
+- [ ] `src/commands/stage.rs` — `run(version, reason) -> Result<String>`
+- [ ] 前置条件：版本未 `Published`（`Published` 拒绝）
+- [ ] 已 `Cancelled` 时复用现有记录（不产生新尝试 ID）
+- [ ] 已 `Staged` 时视为刷新部署（幂等）
+- [ ] 生成发布尝试 ID（UUID v4）
+- [ ] 调用 `Storage::save()` 持久化
+- [ ] CLI 注册：`qtcloud-devops-code stage <version> [--reason <reason>]`
 
-### 4. 测试 `tests/integration.rs`
+### 4. `publish <version>` 命令
 
-- [ ] `test_release_dry_run` — dry-run 模式不执行任何操作
-- [ ] `test_release_precheck_dirty_workspace` — 脏工作区拒绝
-- [ ] `test_release_precheck_wrong_branch` — 非发布分支拒绝
-- [ ] `test_release_tag_only` — 仅创建 tag 模式
-- [ ] `test_release_release_only_needs_existing_tag` — release-only 需要 tag 已存在
+- [ ] `src/commands/publish.rs` — `run(version) -> Result<String>`
+- [ ] 前置条件：版本必须 `Staged`
+- [ ] 执行 GitHub Release（复用现有 `create_release` + `create_tag`）
+- [ ] 状态变更为 `Published`，持久化
+- [ ] 不可逆：成功后不可 `cancel` 或退回
+- [ ] CLI 注册：`qtcloud-devops-code publish <version>`
 
-### 5. 编译验证
+### 5. `cancel <version>` 命令
+
+- [ ] `src/commands/cancel.rs` — `run(version) -> Result<String>`
+- [ ] 前置条件：版本必须 `Staged`
+- [ ] 回滚行为：删除远程 tag（`rollback_tag`） + 删除 GitHub Release（`gh release delete`）
+- [ ] 状态变更为 `Cancelled`，持久化
+- [ ] CLI 注册：`qtcloud-devops-code cancel <version> --reason <reason>`
+
+### 6. `retire <version>` 命令
+
+- [ ] `src/commands/retire.rs` — `run(version) -> Result<String>`
+- [ ] 前置条件：版本必须 `Published`
+- [ ] 仅标记状态，不删除制品
+- [ ] 状态变更为 `Retired`，持久化
+- [ ] 不可逆：退役后只能通过 hotfix 发布新版本
+- [ ] CLI 注册：`qtcloud-devops-code retire <version> --reason <reason>`
+
+### 7. 修改 `src/main.rs`
+
+- [ ] 删除 `Commands::Release`（被 `stage+publish+cancel+retire` 替代）
+- [ ] 注册 `Commands::Stage`, `Commands::Publish`, `Commands::Cancel`, `Commands::Retire`
+- [ ] 错误处理：状态转换失败时输出清晰错误信息
+
+### 8. 修改 `src/lib.rs`
+
+- [ ] `pub mod model;`
+
+### 9. 集成测试
+
+- [ ] `test_stage_publish_flow` — stage → publish 完整流程
+- [ ] `test_stage_cancel_flow` — stage → cancel 流程
+- [ ] `test_publish_from_non_staged_rejected` — 非 Staged 状态 publish 拒绝
+- [ ] `test_cancel_from_non_staged_rejected` — 非 Staged 状态 cancel 拒绝
+- [ ] `test_retire_from_published` — Published → Retired
+- [ ] `test_retire_from_non_published_rejected` — 非 Published 状态 retire 拒绝
+- [ ] `test_stage_already_published_rejected` — 已 Published 版本重新 stage 拒绝
+- [ ] `test_stage_idempotent` — Staged 重复 stage 视为刷新（不产生新 ID）
+- [ ] `test_cancelled_can_restage` — Cancelled 后可重新 stage
+
+### 10. 编译验证
 
 - [ ] `cargo build` 通过
-- [ ] `cargo test` 通过
+- [ ] `cargo test` 全部通过
 - [ ] `cargo clippy -- -D warnings` 通过
 
 ## P1 — 增强
 
-- [ ] CHANGELOG.md 路径自动检测（从 git 根目录）
-- [ ] 非 semver 版本号支持
-- [ ] 配置化的分支限制
+- [ ] 审计日志彩色输出（`--verbose`）
+- [ ] `list` 命令：列出所有发布记录及其状态
+- [ ] `status <version>` 命令：查询单个版本状态
+- [ ] `--dry-run` 支持所有命令
+- [ ] `--json` 输出格式
+- [ ] GitHub Release notes 从 `stage` 时注册的 changelog 自动生成
+
+## P2 — 灰度与编排
+
+- [ ] `stage --ratio <0.0-1.0>` 灰度比例参数
+- [ ] Hotfix 编排脚本
+- [ ] CI 集成插件（GitHub Action）

@@ -1,13 +1,25 @@
-# qtcloud-devops — Git 子模块管理工具
+# qtcloud-devops — 软件发布生命周期管理
 
-KSE（Kernel Submodule Editor）是一个面向多仓库项目的 Git 子模块管理工具，作为 `qtcloud-devops` CLI 的 `code` 子命令集提供。
+`qtcloud-devops` 是一个 Rust CLI 工具，提供基于状态机的软件发布生命周期管理。
 
-KSE **不做** `git` 已有的事（添加、初始化、更新、切换分支等直接用 `git` 命令），只做 `git` **做不到**的事：**三路 commit 比对 + 7 种状态分类** 和 **子模块 → 父仓库指针同步**。
+## 状态机
+
+```
+Staged → Published → Retired
+   ↓
+Cancelled → (可重新 Staged)
+```
+
+| 状态 | 含义 |
+|------|------|
+| Staged | 版本已标记，准备发布 |
+| Published | 版本已正式上线（标签推送 + GitHub Release） |
+| Cancelled | 发布被取消，可重新 Staged |
+| Retired | 版本已退役，**终态**不可逆 |
 
 ## 安装
 
 ```bash
-# 构建
 cd examples/default
 cargo build --release
 export PATH="$PWD/target/release:$PATH"
@@ -16,90 +28,80 @@ export PATH="$PWD/target/release:$PATH"
 ## CLI 快速参考
 
 ```
-qtcloud-devops code <COMMAND> [选项] [参数]
+qtcloud-devops <COMMAND> [选项]
 ```
 
-所有命令支持 `--dry-run` 预览模式。
-
-## 命令详解
-
-### `status` — 查看子模块状态
+### stage — 标记版本
 
 ```bash
-qtcloud-devops code status
-qtcloud-devops code status /path/to/repo
+qtcloud-devops stage -V v1.0.0
+qtcloud-devops stage -V v1.0.0 --reason "fix: 登录模块重构"
 ```
 
-通过三路 commit 比对（父仓库指针 / 本地 HEAD / 远程 HEAD）判定每个子模块的状态。
+- 版本号必须符合 `vX.Y.Z` 或 `pkg/vX.Y.Z` 格式
+- 若版本已取消（Cancelled），会生成新 UUID 重新 Staged
+- 若版本已发布（Published）或已退役（Retired），拒绝操作
 
-**7 种状态**：
+### publish — 发布上线
 
-| 状态 | 含义 | 建议 |
+```bash
+qtcloud-devops publish -V v1.0.0
+qtcloud-devops publish -V v1.0.0 -y   # 跳过确认
+qtcloud-devops publish -V v1.0.0 --changelog docs/CHANGELOG.md
+```
+
+- 仅允许 Staged → Published 转换
+- 执行流程：创建本地标签 → 推送远程 → 创建 GitHub Release（从 CHANGELOG 自动提取 Release Notes）
+- 任一步骤失败自动回滚标签
+
+### cancel — 取消发布
+
+```bash
+qtcloud-devops cancel -V v1.0.0
+qtcloud-devops cancel -V v1.0.0 --reason "暂缓发布"
+```
+
+- 仅允许 Staged → Cancelled 转换
+- 自动删除远程标签和 GitHub Release（若存在）
+
+### retire — 退役版本
+
+```bash
+qtcloud-devops retire -V v1.0.0
+qtcloud-devops retire -V v1.0.0 --reason "EOL"
+```
+
+- 仅允许 Published → Retired 转换
+- **终态操作**，退役后不可重新 Staged
+
+## 数据存储
+
+所有操作记录保存在 `.qtcloud/` 目录下：
+
+| 文件 | 格式 | 用途 |
 |------|------|------|
-| Clean | 三方 commit 一致 | 无需操作 |
-| AheadOfParent | 本地有父仓库未记录的新提交 | `qtcloud-devops code sync parent <name>` |
-| BehindRemote | 远程有更新，本地落后 | `git submodule update --remote <name>` |
-| Detached | 游离 HEAD | `git checkout <name> <branch>` |
-| Dirty | 有未提交的修改 | 手动 commit 或 stash |
-| Orphaned | 父仓库记录的 commit 在远程已不存在 | 手动干预 |
-| Uninitialized | 尚未初始化 | `git submodule update --init <name>` |
-
-远程不可达时显示 🛰 标记，跳过 Orphaned/BehindRemote 判定。
-
-### `sync parent` — 同步到父仓库
-
-Git 没有的原子操作：子模块有更新后更新父仓库指针。
-
-```bash
-qtcloud-devops code sync parent lib-a
-qtcloud-devops code sync parent --all
-```
-
-### `sync platform` — 跨环境版本对齐
-
-```bash
-qtcloud-devops code sync platform lib-a --env production
-```
-
-检查子模块在目标环境的状态，输出差异报告（不执行变更）。
-
-### `retire` — 退役子模块
-
-完整自动化反注册：`deinit` + `.gitmodules` + index 清理。
-
-```bash
-qtcloud-devops code retire lib-old
-```
-
-### `history` — 操作历史
-
-```bash
-qtcloud-devops code history -n 50
-qtcloud-devops code history -m lib-a --start 2024-01-01
-```
-
-### `export-ci` — 导出 CI 脚本
-
-```bash
-qtcloud-devops code export-ci -f github -o .github/workflows/submodules.yml
-```
-
-## 常见场景
-
-```bash
-# 查看状态
-qtcloud-devops code status
-
-# 同步所有子模块到父仓库
-qtcloud-devops code sync parent --all
-
-# 退役
-qtcloud-devops code retire lib-old
-```
+| `releases.json` | JSON | 当前所有发布的快照 |
+| `release-events.jsonl` | JSONL | 每次状态变更的追加事件日志 |
 
 ## 故障排除
 
 ```bash
-qtcloud-devops code --help
-qtcloud-devops code <COMMAND> --help
+# 查看帮助
+qtcloud-devops --help
+qtcloud-devops stage --help
+qtcloud-devops publish --help
+
+# 版本号格式错误
+错误: 版本号格式错误: 1.0
+
+# 状态转换被拒绝
+错误: 版本 v1.0.0 不处于 Staged 状态
+错误: 版本 v1.0.0 已发布，不可重复 stage
+错误: 版本 v1.0.0 已退役，不可重复 stage
+
+# 版本不存在
+错误: 版本 v9.9.9 不存在，请先执行 stage
+
+# 发布中断
+qtcloud-devops cancel -V v1.0.0  # 回滚标签后重新 stage → publish
 ```

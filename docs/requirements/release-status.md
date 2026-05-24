@@ -21,8 +21,7 @@ ls .quanttide/devops/                         # 无法快速了解
 
 1. 从 `release-journal.jsonl` 读取并格式化输出
 2. 显示每个版本的当前状态（Staged / Published / Cancelled / Retired）
-3. 支持 `--json` 供程序消费
-4. 每次操作前后执行，形成 diff
+3. 每次操作前后执行，形成 diff
 
 ## 对话中的关联
 

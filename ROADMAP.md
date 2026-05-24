@@ -1,63 +1,51 @@
 # ROADMAP — 软件发布生命周期管理
 
-参考 `docs/roadmap/specification/release.md` 定义的状态机与命令契约，在 examples/default 中实现符合规范的发布生命周期管理 CLI。
+examples/default 实现量潮发布规范的参考示例。当前版本基于状态机的发布生命周期管理 CLI。
 
-## Iter 0：CLI 脚手架
+## 已完成
 
-| 交付 | 状态 |
-|------|------|
-| 移除已迁移的 `code` 子模块代码 | ✓ |
-| `release` 单步命令（tag + GitHub Release） | ✓ |
-| clap 参数骨架 | ✓ |
+### Iter 0：CLI 脚手架
 
-## Iter 1：状态机核心命令 ✓
+- `release` 单步命令（已废弃）
+- clap 参数骨架
 
-### 状态定义
+### Iter 1：状态机核心命令
+
+**状态定义**
 
 ```
 [*] → Staged : stage
 Staged → Published : publish
 Staged → Cancelled : cancel
-Cancelled → Staged : stage (复用已有制品)
+Cancelled → Staged : stage
 Published → Retired : retire
 Retired → [*]
 ```
 
-状态枚举：`Staged`, `Published`, `Cancelled`, `Retired`
+**交付物**
 
-### 原子命令
+- `src/model/release.rs` — ReleaseStatus / ReleaseRecord / ReleaseEntry / Storage / FileStorage
+- `src/commands/stage.rs` — stage 命令
+- `src/commands/publish.rs` — publish 命令
+- `src/commands/cancel.rs` — cancel 命令
+- `src/commands/retire.rs` — retire 命令
+- `src/commands/release.rs` — 工具函数（validate_version, create_tag, extract_notes 等）
+- `docs/user-guide.md` — 用户文档
+- `docs/roadmap/specification/release.md` — 建模报告
+- 事件溯源：`.quanttide/devops/release-journal.jsonl`
+- 67 测试，全部通过
 
-| 命令 | 转换 | 前置条件 |
-|------|------|----------|
-| `stage <version>` | → Staged | 未 Published；可重复执行（刷新部署） |
-| `publish <version>` | Staged → Published | 必须 Staged；通过审批门禁 |
-| `cancel <version>` | Staged → Cancelled | 必须 Staged |
-| `retire <version>` | Published → Retired | 必须 Published |
+## 待规划
 
-### 审计约束
+### P1 — 体验增强
 
-- 不存在 `delete` 命令
-- 每次状态转换记录：操作人、时间戳、版本号、发布尝试 ID、旧状态、新状态、操作原因
-- 事件溯源，不可变日志
+- [ ] `list` 命令：列出所有发布记录及其状态
+- [ ] `status <version>` 命令：查询单个版本状态
+- [ ] `--dry-run` 支持所有命令
+- [ ] `--json` 输出格式
 
-### 实现方案
+### P2 — 灰度与编排
 
-| 文件 | 操作 | 内容 |
-|------|------|------|
-| `src/model/release.rs` | **新增** | `ReleaseStatus` 枚举、`ReleaseAttempt` 结构体、状态转换校验 |
-| `src/commands/mod.rs` | 修改 | 新增 `stage`、`publish`、`cancel`、`retire` 模块声明 |
-| `src/commands/stage.rs` | **新增** | `stage` 原子命令（预发布/灰度部署） |
-| `src/commands/publish.rs` | **新增** | `publish` 原子命令（正式上线，GitHub Release） |
-| `src/commands/cancel.rs` | **新增** | `cancel` 原子命令（取消发布，环境回滚） |
-| `src/commands/retire.rs` | **新增** | `retire` 原子命令（标记退役，停止服务） |
-| `src/main.rs` | 修改 | 注册新子命令 |
-| `src/release.rs` | 删除（单步 release 被替代） | |
-
-### 基本假设
-
-- 遵循 Semantic Versioning 2.0.0
-- 发布尝试 ID 由 `stage` 生成，为 UUID
-- 状态持久化存储（SQLite 或文件）
-- 角色分离建议按 spec 第 7 节执行
-- `cancel` 回滚行为由实现层保证
-- `Published` 是单向门，不可退回
+- [ ] `stage --ratio <0.0-1.0>` 灰度比例参数
+- [ ] Hotfix 编排脚本
+- [ ] CI 集成插件（GitHub Action）

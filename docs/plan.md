@@ -33,3 +33,10 @@ qtcloud-devops-code plan
 | `CHANGELOG.md` | 版本变更记录 |
 
 不存在的文件会显示"不存在"，不报错。
+
+## 内部行为
+
+1. 依次尝试读取 BUGS.md / ROADMAP.md / TODO.md / CHANGELOG.md
+2. 对每个存在的文件，统计总行数
+3. 按 `- [ ]`（待办）和 `- [x]`（已完成）统计 TODO 完成率
+4. 汇总输出

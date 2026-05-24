@@ -36,3 +36,11 @@ qtcloud-devops-code release-status
 ```
 当前无发布记录
 ```
+
+## 内部行为
+
+1. 打开当前目录下的 `.quanttide/devops/release-journal.jsonl`（如果存在）
+2. 逐行读取，每行解析为一个 `ReleaseEntry`（JSON 格式）
+3. 按 version 去重投影为 `ReleaseRecord`（后出现的 entry 覆盖先出现的，`created_at` 取第一个 entry）
+4. 按 `updated_at` 倒序排列
+5. 统计 Staged / Published / Cancelled / Retired 各状态的数量

@@ -13,9 +13,11 @@ qtcloud-devops-code test --name test_foo
 
 | 参数 | 说明 |
 |------|------|
-| `--name <pattern>` | 按名称过滤测试 |
+| `--name <pattern>` | 按名称过滤测试（传递给 `cargo test -- <pattern>`） |
 
 ## 输出
+
+全部通过：
 
 ```
 测试结果
@@ -38,3 +40,11 @@ qtcloud-devops-code test --name test_foo
   test_broken_feature
   test_regression_case
 ```
+
+## 内部行为
+
+1. 检查当前目录是否存在 `Cargo.toml`（不存在则报错）
+2. 执行 `cargo test`（指定 `--name` 时附加 `-- <pattern>`）
+3. 扫描输出中 `... ok` 行计数为通过
+4. 扫描输出中 `... FAILED` 行计数为失败，并提取测试名称
+5. 如果 `cargo test` 返回非零退出码，视为整体失败

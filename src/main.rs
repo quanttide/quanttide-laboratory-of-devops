@@ -4,7 +4,7 @@ use std::path::PathBuf;
 #[derive(Parser)]
 #[command(
     name = "qtcloud-devops",
-    about = "量潮DevOps工具 — Release 发布管理",
+    about = "量潮DevOps工具 — 软件发布生命周期管理",
     version
 )]
 struct Cli {
@@ -14,58 +14,72 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// 发布 Release
-    ///
-    /// 默认行为：创建 Git 标签并推送 + GitHub Release（仓库从 git remote 自动检测）。
-    /// --tag-only：仅打标签，跳过 GitHub Release。
-    /// --release-only：仅为已有标签创建 GitHub Release（跳过标签创建）。
-    Release {
-        #[arg(long, short = 'V')]
+    /// 将版本部署至预发布/灰度环境，进入 Staged 状态
+    Stage {
+        #[arg(short = 'V', long)]
         version: String,
-
+        #[arg(long, default_value = "")]
+        reason: String,
+    },
+    /// 将 Staged 版本正式发布上线
+    Publish {
+        #[arg(short = 'V', long)]
+        version: String,
         #[arg(long, default_value = "CHANGELOG.md")]
         changelog: String,
-
-        #[arg(long)]
-        dry_run: bool,
-
-        #[arg(long)]
-        tag_only: bool,
-
-        #[arg(long)]
-        release_only: bool,
-
         #[arg(long, short = 'y')]
         yes: bool,
     },
+    /// 取消 Staged 版本的发布
+    Cancel {
+        #[arg(short = 'V', long)]
+        version: String,
+        #[arg(long, default_value = "")]
+        reason: String,
+    },
+    /// 将已上线的版本标记为退役
+    Retire {
+        #[arg(short = 'V', long)]
+        version: String,
+        #[arg(long, default_value = "")]
+        reason: String,
+    },
+}
+
+fn repo_path() -> PathBuf {
+    std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
 }
 
 fn main() {
     let cli = Cli::parse();
 
-    match cli.command {
-        Commands::Release {
+    let result = match cli.command {
+        Commands::Stage { version, reason } => {
+            qtcloud_devops_code::commands::stage::run(&version, &reason, &repo_path())
+        }
+        Commands::Publish {
             version,
             changelog,
-            dry_run,
-            tag_only,
-            release_only,
             yes,
-        } => {
-            if tag_only && release_only {
-                eprintln!("错误: --tag-only 和 --release-only 不能同时使用");
-                std::process::exit(1);
-            }
+        } => qtcloud_devops_code::commands::publish::run(
+            &version,
+            &PathBuf::from(&changelog),
+            &repo_path(),
+            yes,
+        ),
+        Commands::Cancel { version, reason } => {
+            qtcloud_devops_code::commands::cancel::run(&version, &reason, &repo_path())
+        }
+        Commands::Retire { version, reason } => {
+            qtcloud_devops_code::commands::retire::run(&version, &reason, &repo_path())
+        }
+    };
 
-            let code = qtcloud_devops_code::commands::release::run(
-                &version,
-                &PathBuf::from(&changelog),
-                dry_run,
-                tag_only,
-                release_only,
-                yes,
-            );
-            std::process::exit(code);
+    match result {
+        Ok(_) => {}
+        Err(e) => {
+            eprintln!("错误: {}", e);
+            std::process::exit(1);
         }
     }
 }

@@ -1,51 +1,6 @@
 use std::path::Path;
 use std::process::Command;
 
-pub fn precheck(version: &str, changelog_path: &Path, release_only: bool) -> Vec<String> {
-    let mut errors = precheck_version_changelog(version, changelog_path);
-
-    if release_only {
-        let output = Command::new("git").args(["tag", "-l"]).output();
-        if let Ok(out) = output {
-            let tags = String::from_utf8_lossy(&out.stdout);
-            if !tags.lines().any(|t| t.trim() == version) {
-                errors.push(format!(
-                    "标签不存在: {}（--release-only 需要标签已存在）",
-                    version
-                ));
-            }
-        }
-    }
-
-    let output = Command::new("git")
-        .args(["status", "--porcelain"])
-        .output();
-    if let Ok(out) = output {
-        if !out.stdout.is_empty() {
-            errors.push("工作区有未提交的变更".to_string());
-        }
-    }
-
-    let output = Command::new("git")
-        .args(["rev-parse", "--abbrev-ref", "HEAD"])
-        .output();
-    if let Ok(out) = output {
-        let branch = String::from_utf8_lossy(&out.stdout).trim().to_string();
-        if !branch.is_empty()
-            && !branch.starts_with("main")
-            && !branch.starts_with("master")
-            && !branch.starts_with("release/")
-        {
-            errors.push(format!(
-                "不在可发布分支上 (当前: {}), 请切换到 main/master/release/*",
-                branch
-            ));
-        }
-    }
-
-    errors
-}
-
 pub fn validate_version(version: &str) -> bool {
     let re = regex::Regex::new(
         r"^(v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?|[a-zA-Z0-9_.-]+/v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?)$",
@@ -224,94 +179,6 @@ pub fn rollback_tag(version: &str) {
         .output()
         .ok();
     println!("↻ 标签 {} 已回滚", version);
-}
-
-pub fn run(
-    version: &str,
-    changelog_path: &Path,
-    dry_run: bool,
-    tag_only: bool,
-    release_only: bool,
-    yes: bool,
-) -> i32 {
-    if tag_only && release_only {
-        eprintln!("错误: --tag-only 和 --release-only 不能同时使用");
-        return 1;
-    }
-
-    let errors = precheck(version, changelog_path, release_only);
-    if !errors.is_empty() {
-        println!("预检查失败:");
-        for err in &errors {
-            println!("  ✗ {}", err);
-        }
-        return 1;
-    }
-
-    let notes = extract_notes(version, changelog_path);
-    println!("\n=== Release Notes 预览 ===");
-    println!("{}", notes.as_deref().unwrap_or("(空)"));
-    println!("=========================\n");
-
-    if dry_run {
-        println!("✓ 预检查通过 (dry-run 模式，不执行)");
-        return 0;
-    }
-
-    if !confirm_release(version, notes.as_deref(), yes) {
-        println!("已取消发布");
-        return 0;
-    }
-
-    let mut tag_created = false;
-
-    if !release_only {
-        let output = Command::new("git").args(["tag", "-l"]).output();
-        let tag_exists = output.ok().is_some_and(|o| {
-            String::from_utf8_lossy(&o.stdout)
-                .lines()
-                .any(|t| t.trim() == version)
-        });
-
-        if tag_exists {
-            println!("→ 标签 {} 已存在，跳过 tag 创建", version);
-        } else {
-            if !create_tag(version) {
-                return 1;
-            }
-            if !push_tag(version) {
-                rollback_tag(version);
-                return 1;
-            }
-            tag_created = true;
-            println!("✓ 标签 {} 已创建并推送", version);
-        }
-    }
-
-    if !tag_only {
-        let repo = get_remote_repo();
-        match repo {
-            Some(r) => {
-                if !create_release(version, notes.as_deref().unwrap_or(""), &r) {
-                    if tag_created {
-                        rollback_tag(version);
-                    }
-                    return 1;
-                }
-                println!("✓ GitHub Release {} 已创建", version);
-                println!("  https://github.com/{}/releases/tag/{}", r, version);
-            }
-            None => {
-                println!("错误: 无法从 git remote 解析 GitHub 仓库");
-                if tag_created {
-                    rollback_tag(version);
-                }
-                return 1;
-            }
-        }
-    }
-
-    0
 }
 
 #[cfg(test)]
@@ -600,35 +467,39 @@ mod tests {
         assert_eq!(parse_github_repo(url), None);
     }
 
-    // ---- run function ----
+    // ---- confirm_release edge ----
 
     #[test]
-    fn test_run_dry_run_success() {
-        let dir = tempfile::tempdir().unwrap();
-        let changelog = dir.path().join("CHANGELOG.md");
-        std::fs::write(&changelog, "## [1.0.0]\n\ncontent").unwrap();
-        let orig_cwd = std::env::current_dir().unwrap();
-        std::env::set_current_dir(dir.path()).unwrap();
-        let code = run("v1.0.0", &changelog, true, false, false, true);
-        std::env::set_current_dir(orig_cwd).unwrap();
-        assert_eq!(code, 0);
+    fn test_confirm_release_with_empty_notes() {
+        assert!(confirm_release("v1.0.0", Some(""), true));
     }
+
+    // ---- create_tag + rollback_tag in temp repo (single test to avoid CWD races) ----
 
     #[test]
-    fn test_run_precheck_failure() {
+    fn test_create_and_rollback_tag_in_temp_repo() {
         let dir = tempfile::tempdir().unwrap();
-        let changelog = dir.path().join("CHANGELOG.md");
-        let code = run("bad-version", &changelog, false, false, false, true);
-        assert_eq!(code, 1);
-    }
+        let repo = dir.path().join("repo");
+        std::fs::create_dir(&repo).unwrap();
 
-    #[test]
-    fn test_run_tag_only_conflict() {
-        let dir = tempfile::tempdir().unwrap();
-        let changelog = dir.path().join("CHANGELOG.md");
-        std::fs::write(&changelog, "## [1.0.0]\n\ncontent").unwrap();
-        let code = run("v1.0.0", &changelog, false, true, true, true);
-        assert_eq!(code, 1);
-    }
+        Command::new("git").args(["init"]).current_dir(&repo).output().unwrap();
+        Command::new("git").args(["config", "user.name", "t"]).current_dir(&repo).output().unwrap();
+        Command::new("git").args(["config", "user.email", "t@t"]).current_dir(&repo).output().unwrap();
+        std::fs::write(repo.join("f"), "").unwrap();
+        Command::new("git").args(["add", "."]).current_dir(&repo).output().unwrap();
+        Command::new("git").args(["commit", "-m", "x"]).current_dir(&repo).output().unwrap();
 
+        let orig = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&repo).unwrap();
+
+        assert!(create_tag("v0.1.0-single"));
+        let out = Command::new("git").args(["tag", "-l"]).current_dir(&repo).output().unwrap();
+        assert!(String::from_utf8_lossy(&out.stdout).contains("v0.1.0-single"));
+
+        rollback_tag("v0.1.0-single");
+        let out = Command::new("git").args(["tag", "-l"]).current_dir(&repo).output().unwrap();
+        assert!(!String::from_utf8_lossy(&out.stdout).contains("v0.1.0-single"));
+
+        std::env::set_current_dir(orig).unwrap();
+    }
 }

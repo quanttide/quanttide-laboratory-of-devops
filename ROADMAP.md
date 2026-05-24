@@ -10,7 +10,7 @@
 | `release` 单步命令（tag + GitHub Release） | ✓ |
 | clap 参数骨架 | ✓ |
 
-## Iter 1：状态机核心命令
+## Iter 1：状态机核心命令 ✓
 
 ### 状态定义
 

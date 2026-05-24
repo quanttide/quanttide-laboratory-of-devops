@@ -41,15 +41,29 @@ pub fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::release::{ReleaseAttempt, ReleaseStatus, Storage};
+    use crate::model::release::{ReleaseRecord, ReleaseStatus, Storage};
+
+    fn make_record(version: &str, status: ReleaseStatus) -> ReleaseRecord {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs()
+            .to_string();
+        ReleaseRecord {
+            id: uuid::Uuid::new_v4().to_string(),
+            version: version.to_string(),
+            status,
+            created_at: now.clone(),
+            updated_at: now,
+        }
+    }
 
     #[test]
     fn test_cancel_not_staged() {
         let dir = tempfile::tempdir().unwrap();
         let mut storage = FileStorage::new(dir.path());
-        let mut a = ReleaseAttempt::new("v1.0.0", "test");
-        a.status = ReleaseStatus::Published;
-        storage.save(&a).unwrap();
+        let r = make_record("v1.0.0", ReleaseStatus::Published);
+        storage.save(&r).unwrap();
 
         let result = run("v1.0.0", dir.path());
         assert!(result.is_err());
@@ -65,12 +79,12 @@ mod tests {
     #[test]
     fn test_cancel_happy_path() {
         let dir = tempfile::tempdir().unwrap();
-        let attempt_id;
+        let record_id;
         {
             let mut storage = FileStorage::new(dir.path());
-            let a = ReleaseAttempt::new("v1.0.0", "test");
-            attempt_id = a.id.clone();
-            storage.save(&a).unwrap();
+            let r = ReleaseRecord::new_staged("v1.0.0");
+            record_id = r.id.clone();
+            storage.save(&r).unwrap();
         }
 
         let result = run("v1.0.0", dir.path());
@@ -79,6 +93,6 @@ mod tests {
         let storage = FileStorage::new(dir.path());
         let loaded = storage.load("v1.0.0").unwrap();
         assert_eq!(loaded.status, ReleaseStatus::Cancelled);
-        assert_eq!(loaded.id, attempt_id);
+        assert_eq!(loaded.id, record_id);
     }
 }

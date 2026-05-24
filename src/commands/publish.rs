@@ -62,7 +62,11 @@ pub fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::release::{ReleaseAttempt, ReleaseStatus, Storage};
+    use crate::model::release::{ReleaseRecord, ReleaseStatus, Storage};
+
+    fn make_staged(version: &str) -> ReleaseRecord {
+        ReleaseRecord::new_staged(version)
+    }
 
     #[test]
     fn test_publish_not_staged() {
@@ -71,9 +75,9 @@ mod tests {
 
         {
             let mut storage = FileStorage::new(dir.path());
-            let mut a = ReleaseAttempt::new("v1.0.0", "test");
-            a.status = ReleaseStatus::Cancelled;
-            storage.save(&a).unwrap();
+            let mut r = make_staged("v1.0.0");
+            r.status = ReleaseStatus::Cancelled;
+            storage.save(&r).unwrap();
         }
 
         let result = run("v1.0.0", dir.path(), true);
@@ -81,7 +85,7 @@ mod tests {
     }
 
     #[test]
-    fn test_publish_attempt_not_found() {
+    fn test_publish_not_found() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("CHANGELOG.md"), "## [1.0.0]\n\ncontent").unwrap();
         let result = run("v1.0.0", dir.path(), true);
@@ -95,7 +99,7 @@ mod tests {
         std::fs::write(dir.path().join("CHANGELOG.md"), "## [1.0.0]\n\ncontent").unwrap();
 
         let mut storage = FileStorage::new(dir.path());
-        storage.save(&ReleaseAttempt::new("v1.0.0", "test")).unwrap();
+        storage.save(&make_staged("v1.0.0")).unwrap();
 
         let result = run("v1.0.0", dir.path(), false);
         assert!(result.is_err());

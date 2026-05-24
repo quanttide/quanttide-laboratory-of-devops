@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::io::Write;
 use std::path::Path;
 
@@ -11,18 +12,27 @@ pub enum ReleaseStatus {
     Retired,
 }
 
+// Journal 中的一行：不可变事件
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ReleaseAttempt {
+pub struct ReleaseEntry {
+    pub id: String,
+    pub version: String,
+    pub status: ReleaseStatus,
+    pub created_at: String,
+}
+
+// 内存中的业务实体：由事件回放投影得出
+#[derive(Debug, Clone)]
+pub struct ReleaseRecord {
     pub id: String,
     pub version: String,
     pub status: ReleaseStatus,
     pub created_at: String,
     pub updated_at: String,
-    pub reason: String,
 }
 
-impl ReleaseAttempt {
-    pub fn new(version: &str, reason: &str) -> Self {
+impl ReleaseRecord {
+    pub fn new_staged(version: &str) -> Self {
         let now = timestamp();
         Self {
             id: uuid::Uuid::new_v4().to_string(),
@@ -30,7 +40,6 @@ impl ReleaseAttempt {
             status: ReleaseStatus::Staged,
             created_at: now.clone(),
             updated_at: now,
-            reason: reason.to_string(),
         }
     }
 }
@@ -82,86 +91,113 @@ pub fn validate_transition(from: &ReleaseStatus, to: &ReleaseStatus) -> Result<(
 }
 
 pub trait Storage {
-    fn save(&mut self, attempt: &ReleaseAttempt) -> Result<(), Box<dyn std::error::Error>>;
-    fn load(&self, version: &str) -> Option<ReleaseAttempt>;
-    fn list(&self) -> Vec<ReleaseAttempt>;
+    fn save(&mut self, record: &ReleaseRecord) -> Result<(), Box<dyn std::error::Error>>;
+    fn load(&self, version: &str) -> Option<ReleaseRecord>;
+    fn list(&self) -> Vec<ReleaseRecord>;
+}
+
+fn replay_events(path: &Path) -> Vec<ReleaseRecord> {
+    if !path.exists() {
+        return Vec::new();
+    }
+    let mut records: HashMap<String, ReleaseRecord> = HashMap::new();
+    if let Ok(content) = std::fs::read_to_string(path) {
+        for line in content.lines() {
+            if let Ok(entry) = serde_json::from_str::<ReleaseEntry>(line) {
+                let first_created = records
+                    .get(&entry.version)
+                    .map(|r| r.created_at.clone())
+                    .unwrap_or_else(|| entry.created_at.clone());
+                records.insert(
+                    entry.version.clone(),
+                    ReleaseRecord {
+                        id: entry.id,
+                        version: entry.version,
+                        status: entry.status,
+                        created_at: first_created,
+                        updated_at: entry.created_at,
+                    },
+                );
+            }
+        }
+    }
+    records.into_values().collect()
 }
 
 pub struct FileStorage {
     events_path: std::path::PathBuf,
-    attempts: Vec<ReleaseAttempt>,
-}
-
-fn replay_events(path: &Path) -> Vec<ReleaseAttempt> {
-    if !path.exists() {
-        return Vec::new();
-    }
-    let mut attempts: Vec<ReleaseAttempt> = Vec::new();
-    if let Ok(content) = std::fs::read_to_string(path) {
-        for line in content.lines() {
-            if let Ok(event) = serde_json::from_str::<ReleaseAttempt>(line) {
-                if let Some(existing) = attempts.iter_mut().find(|a| a.version == event.version) {
-                    *existing = event;
-                } else {
-                    attempts.push(event);
-                }
-            }
-        }
-    }
-    attempts
+    records: Vec<ReleaseRecord>,
 }
 
 impl FileStorage {
     pub fn new(base_path: &Path) -> Self {
         let events_path = base_path.join(".quanttide/devops/release-journal.jsonl");
-        let attempts = replay_events(&events_path);
+        let records = replay_events(&events_path);
         Self {
             events_path,
-            attempts,
+            records,
         }
     }
 }
 
 impl Storage for FileStorage {
-    fn save(&mut self, attempt: &ReleaseAttempt) -> Result<(), Box<dyn std::error::Error>> {
+    fn save(&mut self, record: &ReleaseRecord) -> Result<(), Box<dyn std::error::Error>> {
         if let Some(existing) = self
-            .attempts
+            .records
             .iter_mut()
-            .find(|a| a.version == attempt.version)
+            .find(|r| r.version == record.version)
         {
-            *existing = attempt.clone();
+            *existing = record.clone();
         } else {
-            self.attempts.push(attempt.clone());
+            self.records.push(record.clone());
         }
+
+        let entry = ReleaseEntry {
+            id: record.id.clone(),
+            version: record.version.clone(),
+            status: record.status.clone(),
+            created_at: record.updated_at.clone(),
+        };
 
         if let Some(parent) = self.events_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let event = serde_json::to_string(attempt)?;
+        let json = serde_json::to_string(&entry)?;
         let mut f = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
             .open(&self.events_path)?;
-        writeln!(f, "{}", event)?;
+        writeln!(f, "{}", json)?;
 
         Ok(())
     }
 
-    fn load(&self, version: &str) -> Option<ReleaseAttempt> {
-        self.attempts
+    fn load(&self, version: &str) -> Option<ReleaseRecord> {
+        self.records
             .iter()
-            .find(|a| a.version == version)
+            .find(|r| r.version == version)
             .cloned()
     }
 
-    fn list(&self) -> Vec<ReleaseAttempt> {
-        self.attempts.clone()
+    fn list(&self) -> Vec<ReleaseRecord> {
+        self.records.clone()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn make_record(version: &str, status: ReleaseStatus) -> ReleaseRecord {
+        let now = timestamp();
+        ReleaseRecord {
+            id: uuid::Uuid::new_v4().to_string(),
+            version: version.to_string(),
+            status,
+            created_at: now.clone(),
+            updated_at: now,
+        }
+    }
 
     // ---- ReleaseStatus ----
 
@@ -214,24 +250,16 @@ mod tests {
         assert!(validate_transition(&ReleaseStatus::Retired, &ReleaseStatus::Cancelled).is_err());
     }
 
-    // ---- ReleaseAttempt ----
+    // ---- ReleaseRecord ----
 
     #[test]
-    fn test_release_attempt_new() {
-        let a = ReleaseAttempt::new("v1.0.0", "initial release");
-        assert_eq!(a.version, "v1.0.0");
-        assert_eq!(a.status, ReleaseStatus::Staged);
-        assert_eq!(a.reason, "initial release");
-        assert!(!a.id.is_empty());
-        assert!(!a.created_at.is_empty());
-        assert_eq!(a.created_at, a.updated_at);
-    }
-
-    #[test]
-    fn test_release_attempt_unique_ids() {
-        let a = ReleaseAttempt::new("v1.0.0", "");
-        let b = ReleaseAttempt::new("v2.0.0", "");
-        assert_ne!(a.id, b.id);
+    fn test_record_fields() {
+        let r = make_record("v1.0.0", ReleaseStatus::Staged);
+        assert_eq!(r.version, "v1.0.0");
+        assert_eq!(r.status, ReleaseStatus::Staged);
+        assert!(!r.id.is_empty());
+        assert!(!r.created_at.is_empty());
+        assert_eq!(r.created_at, r.updated_at);
     }
 
     // ---- FileStorage ----
@@ -240,8 +268,8 @@ mod tests {
     fn test_storage_save_and_load() {
         let dir = tempfile::tempdir().unwrap();
         let mut storage = FileStorage::new(dir.path());
-        let attempt = ReleaseAttempt::new("v1.0.0", "test");
-        storage.save(&attempt).unwrap();
+        let r = make_record("v1.0.0", ReleaseStatus::Staged);
+        storage.save(&r).unwrap();
         let loaded = storage.load("v1.0.0");
         assert!(loaded.is_some());
         assert_eq!(loaded.unwrap().version, "v1.0.0");
@@ -258,35 +286,34 @@ mod tests {
     fn test_storage_update_existing() {
         let dir = tempfile::tempdir().unwrap();
         let mut storage = FileStorage::new(dir.path());
-        let mut a = ReleaseAttempt::new("v1.0.0", "initial");
-        storage.save(&a).unwrap();
+        let mut r = make_record("v1.0.0", ReleaseStatus::Staged);
+        storage.save(&r).unwrap();
 
-        a.status = ReleaseStatus::Published;
-        a.reason = "published".into();
-        a.updated_at = "999".into();
-        storage.save(&a).unwrap();
+        r.status = ReleaseStatus::Published;
+        r.updated_at = "999".into();
+        storage.save(&r).unwrap();
 
         let loaded = storage.load("v1.0.0").unwrap();
         assert_eq!(loaded.status, ReleaseStatus::Published);
-        assert_eq!(loaded.reason, "published");
+        assert_eq!(loaded.updated_at, "999");
     }
 
     #[test]
-    fn test_storage_event_log_appended() {
+    fn test_storage_journal_appended() {
         let dir = tempfile::tempdir().unwrap();
         let mut storage = FileStorage::new(dir.path());
-        let a = ReleaseAttempt::new("v1.0.0", "first");
-        storage.save(&a).unwrap();
+        let r = make_record("v1.0.0", ReleaseStatus::Staged);
+        storage.save(&r).unwrap();
 
-        let events_path = dir.path().join(".quanttide/devops/release-journal.jsonl");
-        let content = std::fs::read_to_string(&events_path).unwrap();
+        let journal = dir.path().join(".quanttide/devops/release-journal.jsonl");
+        let content = std::fs::read_to_string(&journal).unwrap();
         assert!(content.contains("v1.0.0"));
 
-        let mut b = a.clone();
-        b.status = ReleaseStatus::Published;
-        storage.save(&b).unwrap();
+        let mut r2 = r.clone();
+        r2.status = ReleaseStatus::Published;
+        storage.save(&r2).unwrap();
 
-        let content = std::fs::read_to_string(&events_path).unwrap();
+        let content = std::fs::read_to_string(&journal).unwrap();
         let lines: Vec<&str> = content.trim().lines().collect();
         assert_eq!(lines.len(), 2);
     }
@@ -295,8 +322,8 @@ mod tests {
     fn test_storage_list() {
         let dir = tempfile::tempdir().unwrap();
         let mut storage = FileStorage::new(dir.path());
-        storage.save(&ReleaseAttempt::new("v1.0.0", "")).unwrap();
-        storage.save(&ReleaseAttempt::new("v2.0.0", "")).unwrap();
+        storage.save(&make_record("v1.0.0", ReleaseStatus::Staged)).unwrap();
+        storage.save(&make_record("v2.0.0", ReleaseStatus::Published)).unwrap();
         assert_eq!(storage.list().len(), 2);
     }
 
@@ -305,11 +332,42 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         {
             let mut storage = FileStorage::new(dir.path());
-            storage.save(&ReleaseAttempt::new("v1.0.0", "")).unwrap();
+            storage.save(&make_record("v1.0.0", ReleaseStatus::Staged)).unwrap();
         }
         {
             let storage = FileStorage::new(dir.path());
             assert!(storage.load("v1.0.0").is_some());
+        }
+    }
+
+    // ---- created_at preserved on replay ----
+
+    #[test]
+    fn test_created_at_preserved_across_updates() {
+        let dir = tempfile::tempdir().unwrap();
+        let first_ts: String;
+        {
+            let mut storage = FileStorage::new(dir.path());
+            let r = make_record("v1.0.0", ReleaseStatus::Staged);
+            first_ts = r.created_at.clone();
+            storage.save(&r).unwrap();
+        }
+        {
+            let mut storage = FileStorage::new(dir.path());
+            let loaded = storage.load("v1.0.0").unwrap();
+            assert_eq!(loaded.created_at, first_ts);
+
+            let mut updated = loaded;
+            updated.status = ReleaseStatus::Published;
+            updated.updated_at = timestamp();
+            storage.save(&updated).unwrap();
+        }
+        {
+            let storage = FileStorage::new(dir.path());
+            let loaded = storage.load("v1.0.0").unwrap();
+            assert_eq!(loaded.created_at, first_ts);
+            assert_eq!(loaded.status, ReleaseStatus::Published);
+            assert!(loaded.updated_at >= first_ts);
         }
     }
 

@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use crate::model::release::{FileStorage, ReleaseAttempt, ReleaseStatus, Storage};
+use crate::model::release::{FileStorage, ReleaseRecord, ReleaseStatus, Storage};
 
 pub fn run(version: &str, repo_path: &Path) -> Result<String, Box<dyn std::error::Error>> {
     if !crate::commands::release::validate_version(version) {
@@ -31,16 +31,31 @@ pub fn run(version: &str, repo_path: &Path) -> Result<String, Box<dyn std::error
         }
     }
 
-    let attempt = ReleaseAttempt::new(version, "");
-    storage.save(&attempt)?;
-    println!("✓ 版本 {} 已进入 Staged 状态 (发布尝试 ID: {})", version, attempt.id);
-    Ok(attempt.id)
+    let record = ReleaseRecord::new_staged(version);
+    storage.save(&record)?;
+    println!("✓ 版本 {} 已进入 Staged 状态 (发布尝试 ID: {})", version, record.id);
+    Ok(record.id)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::model::release::Storage;
+
+    fn make_record(version: &str, status: ReleaseStatus) -> ReleaseRecord {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs()
+            .to_string();
+        ReleaseRecord {
+            id: uuid::Uuid::new_v4().to_string(),
+            version: version.to_string(),
+            status,
+            created_at: now.clone(),
+            updated_at: now,
+        }
+    }
 
     #[test]
     fn test_stage_new_version() {
@@ -49,8 +64,8 @@ mod tests {
         assert!(!id.is_empty());
 
         let storage = FileStorage::new(dir.path());
-        let a = storage.load("v1.0.0").unwrap();
-        assert_eq!(a.status, ReleaseStatus::Staged);
+        let r = storage.load("v1.0.0").unwrap();
+        assert_eq!(r.status, ReleaseStatus::Staged);
     }
 
     #[test]
@@ -64,9 +79,8 @@ mod tests {
     fn test_stage_already_published_rejected() {
         let dir = tempfile::tempdir().unwrap();
         let mut storage = FileStorage::new(dir.path());
-        let mut a = ReleaseAttempt::new("v1.0.0", "test");
-        a.status = ReleaseStatus::Published;
-        storage.save(&a).unwrap();
+        let r = make_record("v1.0.0", ReleaseStatus::Published);
+        storage.save(&r).unwrap();
 
         let result = run("v1.0.0", dir.path());
         assert!(result.is_err());
@@ -79,10 +93,9 @@ mod tests {
         let old_id;
         {
             let mut storage = FileStorage::new(dir.path());
-            let mut a = ReleaseAttempt::new("v1.0.0", "first");
-            old_id = a.id.clone();
-            a.status = ReleaseStatus::Cancelled;
-            storage.save(&a).unwrap();
+            let r = make_record("v1.0.0", ReleaseStatus::Cancelled);
+            old_id = r.id.clone();
+            storage.save(&r).unwrap();
         }
 
         let id = run("v1.0.0", dir.path()).unwrap();
@@ -98,9 +111,8 @@ mod tests {
     fn test_stage_retired_rejected() {
         let dir = tempfile::tempdir().unwrap();
         let mut storage = FileStorage::new(dir.path());
-        let mut a = ReleaseAttempt::new("v1.0.0", "test");
-        a.status = ReleaseStatus::Retired;
-        storage.save(&a).unwrap();
+        let r = make_record("v1.0.0", ReleaseStatus::Retired);
+        storage.save(&r).unwrap();
 
         let result = run("v1.0.0", dir.path());
         assert!(result.is_err());
@@ -116,7 +128,7 @@ mod tests {
         assert_eq!(id1, id2);
 
         let storage = FileStorage::new(dir.path());
-        let attempts = storage.list();
-        assert_eq!(attempts.len(), 1);
+        let records = storage.list();
+        assert_eq!(records.len(), 1);
     }
 }

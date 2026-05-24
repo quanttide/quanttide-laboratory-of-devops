@@ -31,15 +31,29 @@ pub fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::release::{ReleaseAttempt, ReleaseStatus, Storage};
+    use crate::model::release::{ReleaseRecord, ReleaseStatus, Storage};
+
+    fn make_record(version: &str, status: ReleaseStatus) -> ReleaseRecord {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs()
+            .to_string();
+        ReleaseRecord {
+            id: uuid::Uuid::new_v4().to_string(),
+            version: version.to_string(),
+            status,
+            created_at: now.clone(),
+            updated_at: now,
+        }
+    }
 
     #[test]
     fn test_retire_not_published() {
         let dir = tempfile::tempdir().unwrap();
         let mut storage = FileStorage::new(dir.path());
-        let mut a = ReleaseAttempt::new("v1.0.0", "test");
-        a.status = ReleaseStatus::Staged;
-        storage.save(&a).unwrap();
+        let r = make_record("v1.0.0", ReleaseStatus::Staged);
+        storage.save(&r).unwrap();
 
         let result = run("v1.0.0", dir.path());
         assert!(result.is_err());
@@ -57,9 +71,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         {
             let mut storage = FileStorage::new(dir.path());
-            let mut a = ReleaseAttempt::new("v1.0.0", "release");
-            a.status = ReleaseStatus::Published;
-            storage.save(&a).unwrap();
+            let r = make_record("v1.0.0", ReleaseStatus::Published);
+            storage.save(&r).unwrap();
         }
 
         let result = run("v1.0.0", dir.path());

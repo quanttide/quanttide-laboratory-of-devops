@@ -2,22 +2,7 @@ use std::path::Path;
 use std::process::Command;
 
 pub fn precheck(version: &str, changelog_path: &Path, release_only: bool) -> Vec<String> {
-    let mut errors = Vec::new();
-
-    if !validate_version(version) {
-        errors.push(format!("版本号格式错误: {}", version));
-    }
-
-    if changelog_path.exists() {
-        let content = std::fs::read_to_string(changelog_path).unwrap_or_default();
-        let ver = normalize_version(version);
-        let marker = format!("## [{}]", ver);
-        if !content.contains(&marker) {
-            errors.push(format!("CHANGELOG.md 未找到 {} 版本记录", ver));
-        }
-    } else {
-        errors.push(format!("CHANGELOG.md 不存在: {}", changelog_path.display()));
-    }
+    let mut errors = precheck_version_changelog(version, changelog_path);
 
     if release_only {
         let output = Command::new("git").args(["tag", "-l"]).output();
@@ -72,6 +57,27 @@ pub fn validate_version(version: &str) -> bool {
 fn normalize_version(version: &str) -> String {
     let s = version.strip_prefix('v').unwrap_or(version);
     s.split("/v").last().unwrap_or(s).to_string()
+}
+
+pub fn precheck_version_changelog(version: &str, changelog_path: &Path) -> Vec<String> {
+    let mut errors = Vec::new();
+
+    if !validate_version(version) {
+        errors.push(format!("版本号格式错误: {}", version));
+    }
+
+    if changelog_path.exists() {
+        let content = std::fs::read_to_string(changelog_path).unwrap_or_default();
+        let ver = normalize_version(version);
+        let marker = format!("## [{}]", ver);
+        if !content.contains(&marker) {
+            errors.push(format!("CHANGELOG.md 未找到 {} 版本记录", ver));
+        }
+    } else {
+        errors.push(format!("CHANGELOG.md 不存在: {}", changelog_path.display()));
+    }
+
+    errors
 }
 
 pub fn extract_notes(version: &str, changelog_path: &Path) -> Option<String> {
@@ -228,6 +234,11 @@ pub fn run(
     release_only: bool,
     yes: bool,
 ) -> i32 {
+    if tag_only && release_only {
+        eprintln!("错误: --tag-only 和 --release-only 不能同时使用");
+        return 1;
+    }
+
     let errors = precheck(version, changelog_path, release_only);
     if !errors.is_empty() {
         println!("预检查失败:");
@@ -308,6 +319,8 @@ mod tests {
     use super::*;
     use std::io::Write;
 
+    // ---- validate_version ----
+
     #[test]
     fn test_validate_version_v_prefix() {
         assert!(validate_version("v1.2.3"));
@@ -317,11 +330,20 @@ mod tests {
     fn test_validate_version_with_suffix() {
         assert!(validate_version("v1.2.3-alpha.1"));
         assert!(validate_version("v1.2.3-rc1"));
+        assert!(validate_version("v1.2.3-beta"));
+        assert!(validate_version("v1.2.3-0"));
     }
 
     #[test]
     fn test_validate_version_pkg_prefix() {
         assert!(validate_version("pkg/v1.2.3"));
+        assert!(validate_version("my-crate/v1.2.3"));
+        assert!(validate_version("a.b_c/v1.2.3"));
+    }
+
+    #[test]
+    fn test_validate_version_pkg_with_suffix() {
+        assert!(validate_version("pkg/v1.2.3-rc.1"));
     }
 
     #[test]
@@ -332,7 +354,14 @@ mod tests {
         assert!(!validate_version("abc"));
         assert!(!validate_version(""));
         assert!(!validate_version("vabc.def.ghi"));
+        assert!(!validate_version("V1.2.3"));
+        assert!(!validate_version(" v1.2.3"));
+        assert!(!validate_version("v1.2.3 "));
+        assert!(!validate_version("v1.0.0-"));
+        assert!(!validate_version("/v1.0.0"));
     }
+
+    // ---- normalize_version ----
 
     #[test]
     fn test_normalize_version_v_prefix() {
@@ -348,6 +377,73 @@ mod tests {
     fn test_normalize_version_with_suffix() {
         assert_eq!(normalize_version("v1.2.3-rc1"), "1.2.3-rc1");
     }
+
+    #[test]
+    fn test_normalize_version_complex_pkg() {
+        assert_eq!(normalize_version("my-crate/v1.2.3-beta.2"), "1.2.3-beta.2");
+    }
+
+    #[test]
+    fn test_normalize_version_no_prefix() {
+        assert_eq!(normalize_version("1.2.3"), "1.2.3");
+    }
+
+    // ---- precheck_version_changelog ----
+
+    #[test]
+    fn test_precheck_changelog_version_format_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("CHANGELOG.md");
+        std::fs::write(&path, "## [1.0.0]\n\ncontent").unwrap();
+        let errors = precheck_version_changelog("v1.x", &path);
+        assert!(errors.iter().any(|e| e.contains("版本号格式错误")));
+    }
+
+    #[test]
+    fn test_precheck_changelog_file_not_found() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("CHANGELOG.md");
+        let errors = precheck_version_changelog("v1.0.0", &path);
+        assert!(errors.iter().any(|e| e.contains("不存在")));
+    }
+
+    #[test]
+    fn test_precheck_changelog_missing_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("CHANGELOG.md");
+        std::fs::write(&path, "## [1.0.0]\n\ncontent").unwrap();
+        let errors = precheck_version_changelog("v2.0.0", &path);
+        assert!(errors.iter().any(|e| e.contains("未找到")));
+    }
+
+    #[test]
+    fn test_precheck_changelog_no_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("CHANGELOG.md");
+        std::fs::write(&path, "## [1.0.0]\n\ncontent").unwrap();
+        let errors = precheck_version_changelog("v1.0.0", &path);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn test_precheck_changelog_pkg_version_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("CHANGELOG.md");
+        std::fs::write(&path, "## [2.0.0]\n\ncontent").unwrap();
+        let errors = precheck_version_changelog("pkg/v2.0.0", &path);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn test_precheck_changelog_both_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("CHANGELOG.md");
+        std::fs::write(&path, "## [1.0.0]\n\ncontent").unwrap();
+        let errors = precheck_version_changelog("bad", &path);
+        assert_eq!(errors.len(), 2);
+    }
+
+    // ---- extract_notes ----
 
     #[test]
     fn test_extract_notes_found() {
@@ -390,9 +486,67 @@ mod tests {
     }
 
     #[test]
+    fn test_extract_notes_empty_notes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("CHANGELOG.md");
+        std::fs::write(&path, "# Changelog\n\n## [1.0.0]\n\n").unwrap();
+        assert!(extract_notes("v1.0.0", &path).is_none());
+    }
+
+    #[test]
+    fn test_extract_notes_suffixed_version() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("CHANGELOG.md");
+        let mut f = std::fs::File::create(&path).unwrap();
+        write!(f, "# Changelog\n\n## [1.0.0-rc.1]\n\npre-release notes\n\n## [1.0.0]\n\nstable notes").unwrap();
+        let notes = extract_notes("v1.0.0-rc.1", &path);
+        assert!(notes.is_some());
+        assert!(notes.unwrap().contains("pre-release"));
+    }
+
+    #[test]
+    fn test_extract_notes_multiple_versions() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("CHANGELOG.md");
+        let mut f = std::fs::File::create(&path).unwrap();
+        write!(
+            f,
+            "# Changelog\n\n## [3.0.0]\n\nthird\n\n## [2.0.0]\n\nsecond\n\n## [1.0.0]\n\nfirst"
+        )
+        .unwrap();
+        let notes = extract_notes("v2.0.0", &path);
+        assert!(notes.is_some());
+        assert_eq!(notes.unwrap(), "second");
+    }
+
+    #[test]
+    fn test_extract_notes_no_changelog() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("CHANGELOG.md");
+        assert!(extract_notes("v1.0.0", &path).is_none());
+    }
+
+    #[test]
+    fn test_extract_notes_empty_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("CHANGELOG.md");
+        std::fs::write(&path, "").unwrap();
+        assert!(extract_notes("v1.0.0", &path).is_none());
+    }
+
+    // ---- confirm_release ----
+
+    #[test]
     fn test_confirm_release_yes_flag() {
         assert!(confirm_release("v1.0.0", None, true));
     }
+
+    #[test]
+    fn test_confirm_release_yes_flag_with_notes() {
+        assert!(confirm_release("v1.0.0", Some("release notes here"), true));
+    }
+
+    // ---- parse_github_repo ----
 
     #[test]
     fn test_parse_github_repo_https() {
@@ -413,10 +567,68 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_github_repo_org_subpath() {
+        let url = "https://github.com/org-name/sub-team/repo.git";
+        assert_eq!(parse_github_repo(url), None);
+    }
+
+    #[test]
     fn test_parse_github_repo_not_github() {
         let url = "https://gitlab.com/owner/repo.git";
         assert_eq!(parse_github_repo(url), None);
     }
 
+    #[test]
+    fn test_parse_github_repo_invalid_url() {
+        assert_eq!(parse_github_repo(""), None);
+        assert_eq!(parse_github_repo("not-a-url"), None);
+        assert_eq!(parse_github_repo("github.com"), None);
+        assert_eq!(parse_github_repo("https://example.com"), None);
+    }
+
+    // ---- get_remote_repo (parse_github_repo integration) ----
+
+    #[test]
+    fn test_parse_github_repo_ssh_no_git_suffix() {
+        let url = "git@github.com:owner/repo";
+        assert_eq!(parse_github_repo(url), Some("owner/repo".into()));
+    }
+
+    #[test]
+    fn test_parse_github_repo_trailing_slash() {
+        let url = "https://github.com/owner/repo/";
+        assert_eq!(parse_github_repo(url), None);
+    }
+
+    // ---- run function ----
+
+    #[test]
+    fn test_run_dry_run_success() {
+        let dir = tempfile::tempdir().unwrap();
+        let changelog = dir.path().join("CHANGELOG.md");
+        std::fs::write(&changelog, "## [1.0.0]\n\ncontent").unwrap();
+        let orig_cwd = std::env::current_dir().unwrap();
+        std::env::set_current_dir(dir.path()).unwrap();
+        let code = run("v1.0.0", &changelog, true, false, false, true);
+        std::env::set_current_dir(orig_cwd).unwrap();
+        assert_eq!(code, 0);
+    }
+
+    #[test]
+    fn test_run_precheck_failure() {
+        let dir = tempfile::tempdir().unwrap();
+        let changelog = dir.path().join("CHANGELOG.md");
+        let code = run("bad-version", &changelog, false, false, false, true);
+        assert_eq!(code, 1);
+    }
+
+    #[test]
+    fn test_run_tag_only_conflict() {
+        let dir = tempfile::tempdir().unwrap();
+        let changelog = dir.path().join("CHANGELOG.md");
+        std::fs::write(&changelog, "## [1.0.0]\n\ncontent").unwrap();
+        let code = run("v1.0.0", &changelog, false, true, true, true);
+        assert_eq!(code, 1);
+    }
 
 }

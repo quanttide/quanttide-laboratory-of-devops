@@ -38,6 +38,18 @@ enum Commands {
     },
     /// 查看发布状态
     ReleaseStatus,
+    /// 扫描项目管理文件，生成规划摘要
+    Plan,
+    /// 执行项目构建
+    Build {
+        #[arg(long)]
+        release: bool,
+    },
+    /// 执行测试
+    Test {
+        #[arg(long)]
+        name: Option<String>,
+    },
 }
 
 fn repo_path() -> PathBuf {
@@ -47,21 +59,38 @@ fn repo_path() -> PathBuf {
 fn main() {
     let cli = Cli::parse();
 
-    let result = match cli.command {
+    let result: Result<(), String> = match cli.command {
         Commands::Stage { version } => {
             qtcloud_devops_code::commands::stage::run(&version, &repo_path()).map(|_| ())
+                .map_err(|e| format!("{}", e))
         }
         Commands::Publish { version, yes } => {
             qtcloud_devops_code::commands::publish::run(&version, &repo_path(), yes).map(|_| ())
+                .map_err(|e| format!("{}", e))
         }
         Commands::Cancel { version } => {
             qtcloud_devops_code::commands::cancel::run(&version, &repo_path()).map(|_| ())
+                .map_err(|e| format!("{}", e))
         }
         Commands::Retire { version } => {
             qtcloud_devops_code::commands::retire::run(&version, &repo_path()).map(|_| ())
+                .map_err(|e| format!("{}", e))
         }
         Commands::ReleaseStatus => {
             qtcloud_devops_code::commands::release_status::run(&repo_path()).map(|_| ())
+                .map_err(|e| format!("{}", e))
+        }
+        Commands::Plan => {
+            qtcloud_devops_code::commands::plan::run(&repo_path()).map(|_| ())
+                .map_err(|e| format!("{}", e))
+        }
+        Commands::Build { release } => {
+            qtcloud_devops_code::commands::build::run(&repo_path(), release).map(|_| ())
+                .map_err(|e| format!("{}", e))
+        }
+        Commands::Test { name } => {
+            qtcloud_devops_code::commands::test::run(&repo_path(), name.as_deref()).map(|_| ())
+                .map_err(|e| format!("{}", e))
         }
     };
 

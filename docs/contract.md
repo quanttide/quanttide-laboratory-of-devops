@@ -53,3 +53,17 @@ YAML → ContractYaml（serde 直接反序列化，字段名匹配 YAML）
 - 先写理论（essay）再写代码（contract），映射关系自然形成。反过来如果先写代码再抽象理论，容易过度设计。
 - `Scope` 的 `release` 覆盖粒度要够：scope 级可以改 `changelog` 路径（如 monorepo 中 `src/studio/CHANGELOG.md`），不改的走全局默认。
 - 测试策略：所有解析逻辑通过构造 YAML 字符串验证 `Contract` 字段，不依赖真实文件系统（`tempfile`），不依赖 `contract.yaml` 真实路径。
+
+## 实验室各模块适配状态
+
+四维架构已实施，但部分模块尚未充分利用新模型：
+
+| 模块 | 适配状态 | 说明 |
+|------|---------|------|
+| `build.rs` | ✅ 已适配 | 输出中展示 `registry`、`threshold` |
+| `test.rs` | ⚠ 未利用 | 硬编码 `threshold = 70.0`，应改为从 `contract.stages.test.threshold` 读取 |
+| `validate.rs` | ⚠ 未利用 | 版本号读取逻辑自实现，应复用 `contract.version_status()` |
+| `preflight.rs` | ⚠ 未利用 | 同上 |
+| `contract` 便捷函数 | ⚠ 写完未接 | `scope_release()`、`scope_test_threshold()` 存在但无调用方 |
+
+影响：四维模型的信息更全了，但各模块需要决定自己关心哪些字段。当前保持线装不动。

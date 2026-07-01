@@ -205,7 +205,7 @@ pub fn scan_submodules(repo_path: &Path) -> Vec<HealthIssue> {
     issues
 }
 
-fn check_submodule(repo_path: &Path, name: &str, path: &str) -> SubmoduleStatus {
+fn check_submodule(repo_path: &Path, _name: &str, path: &str) -> SubmoduleStatus {
     let sm_dir = repo_path.join(path);
     if !sm_dir.exists() {
         return SubmoduleStatus::Anomaly(AnomalyKind::Missing);

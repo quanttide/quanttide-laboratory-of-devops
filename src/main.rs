@@ -1,14 +1,18 @@
 /// 量潮DevOps实验室
 ///
-/// 实现并演示 roadmap 中的各个命令模块：
+/// 实现并演示 roadmap 中的各个命令模块和 CI 脚本：
 /// - contract    scope 解析、语言检测、版本状态
 /// - build       build status（CI、语法、版本一致性）
 /// - code        code status（子模块三分法状态模型）
 /// - test        test status（测试结果、覆盖率）
+/// - validate    CI 验证（CHANGELOG、版本一致性）
+/// - preflight   发布前检查（构建、测试、dry-run）
 mod build;
 mod code;
 mod contract;
+mod preflight;
 mod test;
+mod validate;
 
 fn main() {
     let repo_path = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
@@ -57,6 +61,30 @@ fn main() {
     // ── 4. test status ───────────────────────────────────────────────
     println!("━━━ 4. test status ━━━");
     test::status(&repo_path);
+    println!();
+
+    // ── 5. validate ───────────────────────────────────────────────────
+    println!("━━━ 5. CI 验证 ━━━");
+    let changelog = repo_path.join("CHANGELOG.md");
+    match validate::validate_changelog("v0.1.0", &changelog) {
+        Ok(()) => println!("   CHANGELOG:     ✅ 包含版本 v0.1.0"),
+        Err(e) => println!("   CHANGELOG:     ⚠ {}", e.join("; ")),
+    }
+    match validate::validate_version("v0.1.0", &repo_path) {
+        Ok(v) => println!("   版本一致性:    ✅ {} 一致", v),
+        Err(e) => println!("   版本一致性:    ⚠ {}", e),
+    }
+    println!();
+
+    // ── 6. preflight ─────────────────────────────────────────────────
+    println!("━━━ 6. preflight ━━━");
+    let result = preflight::preflight(&repo_path);
+    println!(
+        "\n   构建: {}  测试: {}  dry-run: {}",
+        if result.build_ok { "✅" } else { "❌" },
+        if result.test_ok { "✅" } else { "❌" },
+        if result.dry_run_ok { "✅" } else { "❌" },
+    );
     println!();
 
     println!("🔬 演示结束。运行 cargo test 查看各模块单元测试。");

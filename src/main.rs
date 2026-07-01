@@ -26,13 +26,13 @@ fn main() {
         println!("   未找到 .quanttide/devops/contract.yaml");
     } else {
         for s in &scopes {
-            let lang = contract::detect_language(&repo_path.join(&s.dir));
-            println!(
-                "   scope: {:<12} dir: {:<20} lang: {}",
-                s.name,
-                s.dir,
-                lang.name()
-            );
+            let scope_dir = repo_path.join(&s.dir);
+            let lang = contract::resolve_language(s, &scope_dir);
+            println!("   scope: {:<12} dir: {:<20}", s.name, s.dir,);
+            println!("    语言/框架:  {} / {}", lang.name(), s.framework);
+            println!("    构建工具:   {}", s.build_tool.name());
+            println!("    制品库:     {}", s.registry.name());
+            println!("    CHANGELOG:  {}", s.release.changelog);
         }
     }
     println!();

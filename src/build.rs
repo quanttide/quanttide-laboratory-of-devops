@@ -18,6 +18,11 @@ pub fn status(repo_path: &Path) {
             &contract::Scope {
                 name: "(root)".into(),
                 dir: ".".into(),
+                language: contract::Language::Unknown("auto".into()),
+                framework: String::new(),
+                build_tool: contract::BuildTool::Unknown("auto".into()),
+                registry: contract::Registry::None,
+                release: contract::ReleaseConfig::default(),
             },
         );
         print_scope("(root)", repo_path, &lang, &tag, &config_ver);

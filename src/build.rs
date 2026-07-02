@@ -52,7 +52,7 @@ pub fn status(repo_path: &Path) {
 
 fn print_scope(
     name: &str,
-    _dir: &Path,
+    dir: &Path,
     lang: &contract::Language,
     vs: &contract::VersionStatus,
     release: &contract::StageRelease,
@@ -60,7 +60,7 @@ fn print_scope(
 ) {
     println!("  [{:<12}] {}", name, lang.name());
     println!("    CI:         {}", check_ci(name));
-    println!("    syntax:     {}", check_syntax(name));
+    println!("    syntax:     {}", check_syntax(lang, dir));
     match (&vs.tag_version, &vs.config_version) {
         (Some(t), Some(cv)) if t == cv => println!("    version:    ✅ {}（一致）", t),
         (Some(t), Some(cv)) => println!("    version:    ⚠ tag {} ≠ 配置 {}", t, cv),
@@ -79,23 +79,54 @@ fn check_ci(_scope: &str) -> String {
     }
 }
 
-fn check_syntax(scope: &str) -> String {
-    let dir = Path::new(".").join(scope);
-    if dir.join("Cargo.toml").exists() {
-        match std::process::Command::new("cargo")
-            .args([
-                "check",
-                "--manifest-path",
-                &dir.join("Cargo.toml").to_string_lossy(),
-            ])
-            .output()
-        {
-            Ok(o) if o.status.success() => "✅ cargo check 通过".to_string(),
-            Ok(_) => "❌ cargo check 失败".to_string(),
-            Err(_) => "⚠ cargo 未安装".to_string(),
+fn check_syntax(lang: &contract::Language, dir: &Path) -> String {
+    let (cmd, args, label) = match lang {
+        contract::Language::Rust => {
+            let mp = dir.join("Cargo.toml");
+            if !mp.exists() {
+                return "—".into();
+            }
+            let mp_s = mp.to_string_lossy().to_string();
+            (
+                "cargo",
+                vec!["check".into(), "--manifest-path".into(), mp_s],
+                "cargo check",
+            )
         }
-    } else {
-        "—".to_string()
+        contract::Language::Python => {
+            if !dir.join("pyproject.toml").exists() {
+                return "—".into();
+            }
+            ("uv", vec!["check".into()], "uv check")
+        }
+        contract::Language::Go => {
+            if !dir.join("go.mod").exists() {
+                return "—".into();
+            }
+            ("go", vec!["vet".into(), "./...".into()], "go vet")
+        }
+        contract::Language::Dart => {
+            if !dir.join("pubspec.yaml").exists() {
+                return "—".into();
+            }
+            ("dart", vec!["analyze".into()], "dart analyze")
+        }
+        contract::Language::TypeScript => {
+            if !dir.join("package.json").exists() {
+                return "—".into();
+            }
+            ("npx", vec!["tsc".into(), "--noEmit".into()], "tsc --noEmit")
+        }
+        contract::Language::Unknown(_) => return "⚠ 语言未知，跳过语法校验".into(),
+    };
+    match std::process::Command::new(cmd)
+        .args(&args)
+        .current_dir(dir)
+        .output()
+    {
+        Ok(o) if o.status.success() => format!("✅ {} 通过", label),
+        Ok(_) => format!("❌ {} 失败", label),
+        Err(_) => format!("⚠ {} 未安装", cmd),
     }
 }
 

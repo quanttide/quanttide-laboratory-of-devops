@@ -97,13 +97,15 @@ fn print_scope(
     println!("    changelog:  {}", release.changelog);
 }
 
+pub fn resolve_workflow(scope: &str, ci_workflow: Option<&str>) -> String {
+    match ci_workflow {
+        Some(w) => w.to_string(),
+        None => format!("build-{}", scope),
+    }
+}
+
 fn check_ci(scope: &str, ci_workflow: Option<&str>) -> String {
-    // workflow 名称：scope 的 ci_workflow 字段优先，无则按约定 build-{scope}
-    let workflow = ci_workflow.unwrap_or_else(|| {
-        // 临时 String 需要持续到函数结束，直接返回 &str 借用
-        // 此处用 Cow 不够轻量，简单处理：scope 名本身作为 workflow 名
-        scope
-    });
+    let workflow = resolve_workflow(scope, ci_workflow);
     let output = match std::process::Command::new("gh")
         .args([
             "run",
@@ -140,11 +142,12 @@ fn check_ci(scope: &str, ci_workflow: Option<&str>) -> String {
         .nth(1)
         .and_then(|s| s.split('"').nth(1))
         .unwrap_or("?");
-    let number = out
+    let number: String = out
         .split("\"number\":")
         .nth(1)
-        .and_then(|s| s.split(',').next())
-        .unwrap_or("?");
+        .map(|s| s.chars().take_while(|c| c.is_ascii_digit()).collect())
+        .filter(|s: &String| !s.is_empty())
+        .unwrap_or_else(|| "?".into());
 
     if conclusion.is_empty() {
         return "⚠ 无 CI 运行记录".into();
@@ -251,6 +254,18 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         // 不是 git 仓库时返回 false
         assert!(!is_working_tree_dirty(d.path()));
+    }
+
+    #[test]
+    fn test_resolve_workflow_default() {
+        assert_eq!(resolve_workflow("cli", None), "build-cli");
+        assert_eq!(resolve_workflow("studio", None), "build-studio");
+    }
+
+    #[test]
+    fn test_resolve_workflow_custom() {
+        assert_eq!(resolve_workflow("cli", Some("my-pipeline")), "my-pipeline");
+        assert_eq!(resolve_workflow("cli", Some("release-ci")), "release-ci");
     }
 
     #[test]

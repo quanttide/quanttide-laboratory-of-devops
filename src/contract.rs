@@ -69,6 +69,9 @@ pub struct StageRelease {
 /// Platforms（载体维度）：定义能力的空间。
 ///
 /// 指 GitHub、Kubernetes、Artifactory 等外部治理载体。负责"外部合规"。
+///
+/// 当前默认值锁定为 `github + github_actions`。
+/// 如需支持 GitLab、自建 CI 等，将默认值改为可配置即可。
 #[derive(Debug, Clone)]
 pub struct Platforms {
     /// 源代码管理平台。
@@ -685,6 +688,18 @@ pub fn detect_language(dir: &Path) -> Language {
     detect_by_files(dir)
 }
 
+/// 根据当前工作目录查找匹配的 scope。
+///
+/// 按 dir 路径前缀最长匹配。例如当前在 `src/cli/sub` 时，
+/// `cli` scope（dir: `src/cli`）比 root scope（dir: `.`）优先级高。
+pub fn find_scope_by_path<'a>(scopes: &'a [Scope], current_dir: &Path) -> Option<&'a Scope> {
+    let current_str = current_dir.to_string_lossy();
+    scopes
+        .iter()
+        .filter(|s| current_str.starts_with(&s.dir) || s.dir == ".")
+        .max_by_key(|s| s.dir.len())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -899,5 +914,112 @@ scopes:
         .unwrap();
         let v = read_config_version(d.path(), &Language::Rust);
         assert_eq!(v.as_deref(), Some("0.1.0"));
+    }
+
+    // ── 边缘测试 ────────────────────────────────────────────────────
+
+    #[test]
+    fn test_unknown_language_in_yaml() {
+        let content = "stages:\n  test:\n    threshold: 70\nscopes:\n  ziggy:\n    dir: src/ziggy\n    language: zig\n";
+        let c = parse(content);
+        assert_eq!(c.scopes.len(), 1);
+        assert_eq!(c.scopes[0].language, Language::Unknown("zig".into()));
+    }
+
+    #[test]
+    fn test_normalize_version_rc() {
+        assert_eq!(normalize_version("v1.0.0-rc.1"), "1.0.0-rc.1");
+    }
+
+    #[test]
+    fn test_normalize_version_strips_v_only() {
+        assert_eq!(normalize_version("v0.0.1"), "0.0.1");
+        assert_eq!(normalize_version("0.0.1"), "0.0.1");
+    }
+
+    #[test]
+    fn test_normalize_version_scoped_with_rc() {
+        assert_eq!(normalize_version("cli/v1.0.0-rc.1"), "1.0.0-rc.1");
+    }
+
+    #[test]
+    fn test_find_scope_by_path_exact_match() {
+        let scopes = vec![
+            Scope {
+                name: "root".into(),
+                dir: ".".into(),
+                language: Language::Unknown("auto".into()),
+                ..scope_default()
+            },
+            Scope {
+                name: "cli".into(),
+                dir: "src/cli".into(),
+                language: Language::Rust,
+                ..scope_default()
+            },
+        ];
+        let found = find_scope_by_path(&scopes, Path::new("src/cli"));
+        assert_eq!(found.map(|s| s.name.as_str()), Some("cli"));
+    }
+
+    #[test]
+    fn test_find_scope_by_path_subdir() {
+        let scopes = vec![
+            Scope {
+                name: "root".into(),
+                dir: ".".into(),
+                language: Language::Unknown("auto".into()),
+                ..scope_default()
+            },
+            Scope {
+                name: "cli".into(),
+                dir: "src/cli".into(),
+                language: Language::Rust,
+                ..scope_default()
+            },
+        ];
+        // 在子目录中应匹配最长前缀的 scope
+        let found = find_scope_by_path(&scopes, Path::new("src/cli/sub/foo"));
+        assert_eq!(found.map(|s| s.name.as_str()), Some("cli"));
+    }
+
+    #[test]
+    fn test_find_scope_by_path_root_fallback() {
+        let scopes = vec![
+            Scope {
+                name: "root".into(),
+                dir: ".".into(),
+                language: Language::Unknown("auto".into()),
+                ..scope_default()
+            },
+            Scope {
+                name: "cli".into(),
+                dir: "src/cli".into(),
+                language: Language::Rust,
+                ..scope_default()
+            },
+        ];
+        let found = find_scope_by_path(&scopes, Path::new("docs"));
+        assert_eq!(found.map(|s| s.name.as_str()), Some("root"));
+    }
+
+    #[test]
+    fn test_find_scope_by_path_no_match() {
+        let scopes = vec![];
+        let found = find_scope_by_path(&scopes, Path::new("src/cli"));
+        assert!(found.is_none());
+    }
+
+    fn scope_default() -> Scope {
+        Scope {
+            name: String::new(),
+            dir: ".".into(),
+            language: Language::Unknown("auto".into()),
+            framework: String::new(),
+            build_tool: BuildTool::Unknown("auto".into()),
+            registry: Registry::None,
+            release: StageRelease::default(),
+            test_threshold: None,
+        }
     }
 }

@@ -185,7 +185,7 @@ impl Language {
 #[derive(Debug, Clone, PartialEq)]
 pub enum BuildTool {
     Cargo,
-    Pip,
+    Uv,
     Go,
     Flutter,
     Npm,
@@ -200,7 +200,7 @@ impl BuildTool {
     pub fn name(&self) -> &str {
         match self {
             BuildTool::Cargo => "cargo",
-            BuildTool::Pip => "pip",
+            BuildTool::Uv => "uv",
             BuildTool::Go => "go build",
             BuildTool::Flutter => "flutter build",
             BuildTool::Npm => "npm",
@@ -563,7 +563,7 @@ impl ContractYaml {
                 };
                 let build_tool = match cfg.build_tool.as_deref() {
                     Some("cargo") => BuildTool::Cargo,
-                    Some("pip") => BuildTool::Pip,
+                    Some("uv") => BuildTool::Uv,
                     Some("go") => BuildTool::Go,
                     Some("flutter") => BuildTool::Flutter,
                     Some("npm") => BuildTool::Npm,

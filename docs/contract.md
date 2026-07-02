@@ -19,7 +19,7 @@ Contract { stages, platforms, sources, scopes: Vec<Scope> }
 
 ```rust
 Language      → Rust | Python | Go | Dart | TypeScript | Unknown(String)
-BuildTool     → Cargo | Pip | Go | Flutter | Npm | Unknown(String)
+BuildTool     → Cargo | Uv | Go | Flutter | Npm | Unknown(String)
 Registry      → Crates | PyPI | PubDev | Npm | GitHubReleases | Docker | None
 SourceType    → Cargo | Pyproject | TagOnly | Dart | PackageJson | Auto
 ```

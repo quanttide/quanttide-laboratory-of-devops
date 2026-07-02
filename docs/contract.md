@@ -56,14 +56,16 @@ YAML → ContractYaml（serde 直接反序列化，字段名匹配 YAML）
 
 ## 实验室各模块适配状态
 
-四维架构已实施，但部分模块尚未充分利用新模型：
+四维架构已全面接入：
 
 | 模块 | 适配状态 | 说明 |
 |------|---------|------|
-| `build.rs` | ✅ 已适配 | 输出中展示 `registry`、`threshold` |
-| `test.rs` | ⚠ 未利用 | 硬编码 `threshold = 70.0`，应改为从 `contract.stages.test.threshold` 读取 |
-| `validate.rs` | ⚠ 未利用 | 版本号读取逻辑自实现，应复用 `contract.version_status()` |
-| `preflight.rs` | ⚠ 未利用 | 同上 |
-| `contract` 便捷函数 | ⚠ 写完未接 | `scope_release()`、`scope_test_threshold()` 存在但无调用方 |
+| `build.rs` | ✅ | 使用 `contract::version_status()`、`contract::scope_release()` |
+| `test.rs` | ✅ | 使用 `contract::scope_test_threshold()` 读取阈值 |
+| `preflight.rs` | ✅ | 使用 `contract::version_status()` 检查版本一致性 |
+| `validate.rs` | — | 已删除，功能已合并至 contract/preflight |
+| `code.rs` | — | 独立模块，不依赖契约 |
 
-影响：四维模型的信息更全了，但各模块需要决定自己关心哪些字段。当前保持线装不动。
+便捷函数 `scope_release()`、`scope_test_threshold()` 均有调用方。
+
+各模块文档见同目录下 `build.md`、`code.md`、`test.md`、`preflight.md`。

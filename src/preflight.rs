@@ -20,11 +20,44 @@ impl PreflightResult {
 }
 
 /// 执行发布前检查。
-pub fn preflight(repo_path: &Path) -> PreflightResult {
+pub fn preflight(repo_path: &Path, _contract: &crate::contract::Contract) -> PreflightResult {
     println!("preflight");
 
-    let version = read_self_version(repo_path).unwrap_or_else(|| "?".into());
-    println!("for v{version}");
+    // 从契约读版本状态
+    let scopes = crate::contract::load_scopes(repo_path);
+    let scopes: Vec<crate::contract::Scope> = if scopes.is_empty() {
+        vec![crate::contract::Scope {
+            name: "(root)".into(),
+            dir: ".".into(),
+            language: crate::contract::Language::Unknown(String::new()),
+            framework: String::new(),
+            build_tool: crate::contract::BuildTool::Unknown(String::new()),
+            registry: crate::contract::Registry::None,
+            release: crate::contract::StageRelease::default(),
+            test_threshold: None,
+        }]
+    } else {
+        scopes
+    };
+
+    let mut version = "?".to_string();
+    for s in &scopes {
+        let vs = crate::contract::version_status(repo_path, s);
+        match &vs.config_version {
+            Some(v) => {
+                let icon = if vs.consistent {
+                    "✅"
+                } else {
+                    "⚠ tag不匹配"
+                };
+                println!("  {}: {} {}", s.name, v, icon);
+                if version == "?" {
+                    version = v.clone();
+                }
+            }
+            None => println!("  {}: ? 未检测到版本", s.name),
+        }
+    }
     println!();
 
     let build_ok = run_build(repo_path);
@@ -47,19 +80,6 @@ pub fn preflight(repo_path: &Path) -> PreflightResult {
     }
 
     result
-}
-
-fn read_self_version(repo_path: &Path) -> Option<String> {
-    let content = std::fs::read_to_string(repo_path.join("Cargo.toml")).ok()?;
-    for line in content.lines() {
-        let t = line.trim();
-        if let Some(v) = t.strip_prefix("version = \"") {
-            if let Some(end) = v.find('"') {
-                return Some(v[..end].to_string());
-            }
-        }
-    }
-    None
 }
 
 fn run_build(repo_path: &Path) -> bool {
@@ -158,19 +178,10 @@ mod tests {
     #[test]
     fn test_preflight_no_cargo_toml() {
         let d = tempfile::tempdir().unwrap();
-        let r = preflight(d.path());
+        // 无 contract.yaml，使用默认契约
+        let c = crate::contract::load(d.path());
+        let r = preflight(d.path(), &c);
         // 无 Cargo.toml 时所有步骤跳过，preflight 通过
         assert!(r.all_pass());
-    }
-
-    #[test]
-    fn test_read_self_version() {
-        let d = tempfile::tempdir().unwrap();
-        std::fs::write(
-            d.path().join("Cargo.toml"),
-            "[package]\nversion = \"0.1.0\"\n",
-        )
-        .unwrap();
-        assert_eq!(read_self_version(d.path()).as_deref(), Some("0.1.0"));
     }
 }

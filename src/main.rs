@@ -12,7 +12,6 @@ mod code;
 mod contract;
 mod preflight;
 mod test;
-mod validate;
 
 fn main() {
     let repo_path = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
@@ -79,25 +78,12 @@ fn main() {
 
     // ── 4. test status ───────────────────────────────────────────────
     println!("━━━ 4. test status ━━━");
-    test::status(&repo_path);
+    test::status(&repo_path, &c);
     println!();
 
-    // ── 5. validate ───────────────────────────────────────────────────
-    println!("━━━ 5. CI 验证 ━━━");
-    let changelog = repo_path.join("CHANGELOG.md");
-    match validate::validate_changelog("v0.1.0", &changelog) {
-        Ok(()) => println!("   CHANGELOG:     ✅ 包含版本 v0.1.0"),
-        Err(e) => println!("   CHANGELOG:     ⚠ {}", e.join("; ")),
-    }
-    match validate::validate_version("v0.1.0", &repo_path) {
-        Ok(v) => println!("   版本一致性:    ✅ {} 一致", v),
-        Err(e) => println!("   版本一致性:    ⚠ {}", e),
-    }
-    println!();
-
-    // ── 6. preflight ─────────────────────────────────────────────────
-    println!("━━━ 6. preflight ━━━");
-    let result = preflight::preflight(&repo_path);
+    // ── 5. preflight ─────────────────────────────────────────────────
+    println!("━━━ 5. preflight ━━━");
+    let result = preflight::preflight(&repo_path, &c);
     println!(
         "\n   构建: {}  测试: {}  dry-run: {}",
         if result.build_ok { "✅" } else { "❌" },

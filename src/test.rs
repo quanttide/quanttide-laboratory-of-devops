@@ -31,7 +31,7 @@ impl Coverage {
 }
 
 /// 按 scope 输出测试状态。
-pub fn status(repo_path: &Path) {
+pub fn status(repo_path: &Path, c: &contract::Contract) {
     let scopes = contract::load_scopes(repo_path);
 
     println!("测试状态");
@@ -40,7 +40,7 @@ pub fn status(repo_path: &Path) {
     if scopes.is_empty() {
         let lang = contract::detect_language(repo_path);
         let summary = collect_test_summary(repo_path, &lang);
-        let coverage = collect_coverage(repo_path, &lang);
+        let coverage = collect_coverage(repo_path, &lang, c.stages.test.threshold);
         print_scope("(root)", &summary, &coverage);
     } else {
         for scope in &scopes {
@@ -49,9 +49,10 @@ pub fn status(repo_path: &Path) {
                 println!("  [{}]     ⚠ 目录不存在", scope.name);
                 continue;
             }
-            let lang = contract::detect_language(&scope_dir);
+            let lang = contract::resolve_language(scope, &scope_dir);
             let summary = collect_test_summary(&scope_dir, &lang);
-            let coverage = collect_coverage(&scope_dir, &lang);
+            let threshold = contract::scope_test_threshold(c, &scope);
+            let coverage = collect_coverage(&scope_dir, &lang, threshold);
             print_scope(&scope.name, &summary, &coverage);
         }
     }
@@ -166,9 +167,7 @@ fn parse_test_summary(content: &str) -> TestSummary {
 }
 
 /// 收集覆盖率数据。
-fn collect_coverage(dir: &Path, lang: &contract::Language) -> Coverage {
-    let threshold = 70.0;
-
+fn collect_coverage(dir: &Path, lang: &contract::Language, threshold: f64) -> Coverage {
     match lang {
         contract::Language::Rust => {
             // 按优先级查找覆盖率报告

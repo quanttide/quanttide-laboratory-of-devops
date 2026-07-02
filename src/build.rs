@@ -11,9 +11,19 @@ pub fn status(repo_path: &Path) {
 
     if c.scopes.is_empty() {
         let lang = contract::detect_by_files(repo_path);
-        let tag = latest_tag(repo_path);
-        let vs = version_status_root(repo_path);
-        print_scope("(root)", repo_path, &lang, &tag, &vs, &c);
+        let root_scope = contract::Scope {
+            name: "(root)".into(),
+            dir: ".".into(),
+            language: lang.clone(),
+            framework: String::new(),
+            build_tool: contract::BuildTool::Unknown(String::new()),
+            registry: contract::Registry::None,
+            release: contract::StageRelease::default(),
+            test_threshold: None,
+        };
+        let vs = contract::version_status(repo_path, &root_scope);
+        let release = contract::scope_release(&c, &root_scope);
+        print_scope("(root)", repo_path, &lang, &vs, release, &c);
     } else {
         for scope in &c.scopes {
             let scope_dir = repo_path.join(&scope.dir);
@@ -22,9 +32,9 @@ pub fn status(repo_path: &Path) {
                 continue;
             }
             let lang = contract::resolve_language(scope, &scope_dir);
-            let tag = latest_tag_for_scope(repo_path, &scope.name);
             let vs = contract::version_status(repo_path, scope);
-            print_scope(&scope.name, &scope_dir, &lang, &tag, &vs, &c);
+            let release = contract::scope_release(&c, scope);
+            print_scope(&scope.name, &scope_dir, &lang, &vs, release, &c);
         }
     }
 
@@ -44,8 +54,8 @@ fn print_scope(
     name: &str,
     _dir: &Path,
     lang: &contract::Language,
-    _tag: &Option<String>,
     vs: &contract::VersionStatus,
+    release: &contract::StageRelease,
     c: &contract::Contract,
 ) {
     println!("  [{:<12}] {}", name, lang.name());
@@ -59,74 +69,7 @@ fn print_scope(
         (None, None) => println!("    version:    暂无发布"),
     }
     println!("    registry:   {}", c.platforms.artifact_registry.name());
-    println!("    threshold:  {}%", c.stages.test.threshold);
-}
-
-fn version_status_root(repo_path: &Path) -> contract::VersionStatus {
-    let tag = latest_tag(repo_path);
-    let config = contract::detect_by_files(repo_path);
-    let dir = repo_path;
-    let config_ver = match config {
-        contract::Language::Rust => read_simple_version(dir, "Cargo.toml"),
-        _ => None,
-    };
-    let consistent = match (&tag, &config_ver) {
-        (Some(t), Some(c)) => t == c,
-        (None, None) => true,
-        _ => false,
-    };
-    contract::VersionStatus {
-        tag_version: tag,
-        config_version: config_ver,
-        consistent,
-    }
-}
-
-fn read_simple_version(dir: &Path, filename: &str) -> Option<String> {
-    let content = std::fs::read_to_string(dir.join(filename)).ok()?;
-    for line in content.lines() {
-        let t = line.trim();
-        if let Some(v) = t.strip_prefix("version = \"") {
-            if let Some(end) = v.find('"') {
-                return Some(v[..end].to_string());
-            }
-        }
-    }
-    None
-}
-
-fn latest_tag(repo_path: &Path) -> Option<String> {
-    let output = std::process::Command::new("git")
-        .args(["tag", "--sort=-version:refname"])
-        .current_dir(repo_path)
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    std::str::from_utf8(&output.stdout)
-        .ok()?
-        .lines()
-        .next()
-        .map(|s| s.to_string())
-}
-
-fn latest_tag_for_scope(repo_path: &Path, scope_name: &str) -> Option<String> {
-    let output = std::process::Command::new("git")
-        .args(["tag", "--sort=-version:refname"])
-        .current_dir(repo_path)
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let prefix = format!("{}/v", scope_name);
-    let alt_prefix = format!("{}/", scope_name);
-    std::str::from_utf8(&output.stdout)
-        .ok()?
-        .lines()
-        .find(|t| t.starts_with(&prefix) || t.starts_with(&alt_prefix))
-        .map(|s| s.to_string())
+    println!("    changelog:  {}", release.changelog);
 }
 
 fn check_ci(_scope: &str) -> String {
@@ -164,5 +107,46 @@ fn is_working_tree_dirty(repo_path: &Path) -> bool {
     {
         Ok(o) => !o.stdout.is_empty(),
         Err(_) => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_print_scope_all_ok() {
+        let d = tempfile::tempdir().unwrap();
+        let c = contract::load(d.path());
+        let vs = contract::VersionStatus {
+            tag_version: Some("0.1.0".into()),
+            config_version: Some("0.1.0".into()),
+            consistent: true,
+        };
+        let release = contract::StageRelease::default();
+        // 只是格式验证，不写文件
+        print_scope(
+            "test",
+            d.path(),
+            &contract::Language::Rust,
+            &vs,
+            &release,
+            &c,
+        );
+    }
+
+    #[test]
+    fn test_is_working_tree_dirty_empty_repo() {
+        let d = tempfile::tempdir().unwrap();
+        // 不是 git 仓库时返回 false
+        assert!(!is_working_tree_dirty(d.path()));
+    }
+
+    #[test]
+    fn test_detect_no_contract_yaml() {
+        let d = tempfile::tempdir().unwrap();
+        // 默认契约的 scopes 为空
+        let c = contract::load(d.path());
+        assert!(c.scopes.is_empty());
     }
 }

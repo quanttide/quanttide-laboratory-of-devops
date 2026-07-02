@@ -70,7 +70,7 @@ fn print_scope(
 ) {
     println!("  [{:<12}] {}", name, lang.name());
     println!("    CI:         {}", check_ci(name, ci_workflow));
-    println!("    syntax:     {}", check_syntax(lang, dir));
+    println!("    build:      {}", check_syntax(lang, dir));
     match (&vs.tag_version, &vs.config_version) {
         (Some(t), Some(cv)) if t == cv => println!("    version:    ✅ {}（一致）", t),
         (Some(t), Some(cv)) => println!("    version:    ⚠ tag {} ≠ 配置 {}", t, cv),

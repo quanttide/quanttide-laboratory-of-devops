@@ -49,6 +49,17 @@ pub fn version_status(repo_path: &Path, scope: &Scope) -> VersionStatus { tag_ve
 - **配置版本**：按语言读取 `Cargo.toml` / `pyproject.toml` / `package.json` / `pubspec.yaml`
 - **一致性**：两者都存在时比较是否相等；都为空视为一致；一个为空一个有时视为不一致
 
+## 覆盖语义（浅覆盖）
+
+Scope 对全局配置的覆盖是**浅覆盖**：scope 级有值就用 scope 的，没有就用全局的。不是深度合并。
+
+示例：
+- `scope.test_threshold = Some(90)` → 使用 90（覆盖全局 70）
+- `scope.test_threshold = None` → 使用全局 `stages.test.threshold`（70）
+- `scope.release.changelog = "src/cli/CHANGELOG.md"` → 只覆盖 changelog，`pre_publish` 走全局
+
+判断逻辑在 `scope_release()` 中：对比 scope 的 release 是否等于默认值。是则返回全局引用（零拷贝），否则返回 scope 的。
+
 ## 便捷函数
 
 ```rust

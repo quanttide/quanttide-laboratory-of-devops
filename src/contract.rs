@@ -250,6 +250,10 @@ fn parse(content: &str) -> Contract {
     if let Ok(parsed) = serde_yaml::from_str::<ContractYaml>(content) {
         return parsed.into_contract();
     }
+    // 新格式解析失败。如果 YAML 语法本身合法，说明是字段不匹配，给出警告
+    if serde_yaml::from_str::<serde_yaml::Value>(content).is_ok() {
+        eprintln!("⚠ contract.yaml: 无法按新格式解析，尝试兼容旧格式...");
+    }
     // 兼容旧格式：scopes 是简单映射
     if let Ok(old) = serde_yaml::from_str::<OldContractYaml>(content) {
         return old.into_contract();

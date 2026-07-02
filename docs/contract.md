@@ -19,9 +19,9 @@ Contract { stages, platforms, sources, scopes: Vec<Scope> }
 
 ```rust
 Language      → Rust | Python | Go | Dart | TypeScript | Unknown(String)
-BuildTool     → Cargo | Uv | Go | Flutter | Npm | Unknown(String)
+BuildTool     → Cargo | Pip | Go | Flutter | Npm | Unknown(String)
 Registry      → Crates | PyPI | PubDev | Npm | GitHubReleases | Docker | None
-SourceType    → Cargo | Python | Go | Dart | Node | Auto
+SourceType    → Cargo | Pyproject | TagOnly | Dart | PackageJson | Auto
 ```
 
 **兜底策略**：所有 Enum 都有 `Unknown` 或 `None` 变体。`language: zig` 不会让解析崩溃，而是存为 `Language::Unknown("zig")`，后续功能不对它生效。

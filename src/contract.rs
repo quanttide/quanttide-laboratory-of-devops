@@ -122,14 +122,14 @@ pub struct VersionSource {
 pub enum SourceType {
     /// cargo（Cargo.toml）
     Cargo,
-    /// uv/poetry/pdm（pyproject.toml）
-    Python,
-    /// Go（go.mod 无标准版本，从 tag 读）
-    Go,
+    /// pyproject.toml（PEP 621 / Poetry / PDM）
+    Pyproject,
+    /// 不从配置文件读版本，只从 git tag 读
+    TagOnly,
     /// Dart/Flutter（pubspec.yaml）
     Dart,
     /// Node/TypeScript（package.json）
-    Node,
+    PackageJson,
     /// 自动检测
     Auto,
 }
@@ -185,7 +185,7 @@ impl Language {
 #[derive(Debug, Clone, PartialEq)]
 pub enum BuildTool {
     Cargo,
-    Uv,
+    Pip,
     Go,
     Flutter,
     Npm,
@@ -200,7 +200,7 @@ impl BuildTool {
     pub fn name(&self) -> &str {
         match self {
             BuildTool::Cargo => "cargo",
-            BuildTool::Uv => "uv",
+            BuildTool::Pip => "pip",
             BuildTool::Go => "go build",
             BuildTool::Flutter => "flutter build",
             BuildTool::Npm => "npm",
@@ -563,7 +563,7 @@ impl ContractYaml {
                 };
                 let build_tool = match cfg.build_tool.as_deref() {
                     Some("cargo") => BuildTool::Cargo,
-                    Some("uv") => BuildTool::Uv,
+                    Some("pip") => BuildTool::Pip,
                     Some("go") => BuildTool::Go,
                     Some("flutter") => BuildTool::Flutter,
                     Some("npm") => BuildTool::Npm,
@@ -648,10 +648,10 @@ fn parse_registry(s: Option<&str>) -> Registry {
 fn parse_source_type(s: Option<&str>) -> SourceType {
     match s {
         Some("cargo") => SourceType::Cargo,
-        Some("python") => SourceType::Python,
-        Some("go") => SourceType::Go,
+        Some("pyproject") => SourceType::Pyproject,
+        Some("tag") => SourceType::TagOnly,
         Some("dart") => SourceType::Dart,
-        Some("node") | Some("typescript") => SourceType::Node,
+        Some("package.json") | Some("node") | Some("typescript") => SourceType::PackageJson,
         _ => SourceType::Auto,
     }
 }

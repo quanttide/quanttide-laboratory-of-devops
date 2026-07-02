@@ -126,8 +126,8 @@ pub enum SourceType {
     Pyproject,
     /// 不从配置文件读版本，只从 git tag 读
     TagOnly,
-    /// Dart/Flutter（pubspec.yaml）
-    Dart,
+    /// pubspec.yaml（Dart/Flutter）
+    Pubspec,
     /// Node/TypeScript（package.json）
     PackageJson,
     /// 自动检测
@@ -650,7 +650,7 @@ fn parse_source_type(s: Option<&str>) -> SourceType {
         Some("cargo") => SourceType::Cargo,
         Some("pyproject") => SourceType::Pyproject,
         Some("tag") => SourceType::TagOnly,
-        Some("dart") => SourceType::Dart,
+        Some("pubspec") => SourceType::Pubspec,
         Some("package.json") | Some("node") | Some("typescript") => SourceType::PackageJson,
         _ => SourceType::Auto,
     }

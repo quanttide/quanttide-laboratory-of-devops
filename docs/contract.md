@@ -26,6 +26,14 @@ SourceType    → Cargo | Python | Go | Dart | Node | Auto
 
 **兜底策略**：所有 Enum 都有 `Unknown` 或 `None` 变体。`language: zig` 不会让解析崩溃，而是存为 `Language::Unknown("zig")`，后续功能不对它生效。
 
+检查是否被支持：
+
+```rust
+if !language.is_supported() {
+    eprintln!("⚠ scope {}: 语言 {:?} 未知", name, language);
+}
+```
+
 ## 加载逻辑
 
 ```rust

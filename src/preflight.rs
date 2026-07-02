@@ -43,8 +43,8 @@ pub fn preflight(repo_path: &Path, _contract: &crate::contract::Contract) -> Pre
     let mut version = "?".to_string();
     for s in &scopes {
         // 语言/构建工具未知时输出警告，不阻断流程
-        if matches!(s.language, crate::contract::Language::Unknown(_)) {
-            eprintln!("  ⚠ {}: 语言未知，相关检查跳过", s.name);
+        if !s.language.is_supported() {
+            eprintln!("  ⚠ {}: 语言 {:?} 未知，相关检查跳过", s.name, s.language);
         }
         if matches!(s.build_tool, crate::contract::BuildTool::Unknown(_)) {
             eprintln!("  ⚠ {}: 构建工具未知，语法校验跳过", s.name);

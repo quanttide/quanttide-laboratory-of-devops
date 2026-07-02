@@ -163,6 +163,10 @@ pub enum Language {
 }
 
 impl Language {
+    pub fn is_supported(&self) -> bool {
+        !matches!(self, Language::Unknown(_))
+    }
+
     pub fn name(&self) -> &str {
         match self {
             Language::Rust => "Rust",
@@ -252,12 +256,14 @@ fn parse(content: &str) -> Contract {
     }
     // 新格式解析失败。如果 YAML 语法本身合法，说明是字段不匹配，给出警告
     if serde_yaml::from_str::<serde_yaml::Value>(content).is_ok() {
-        eprintln!("⚠ contract.yaml: 无法按新格式解析，尝试兼容旧格式...");
+        eprintln!("⚠ contract.yaml: 无法按新格式解析，尝试旧格式...");
     }
     // 兼容旧格式：scopes 是简单映射
     if let Ok(old) = serde_yaml::from_str::<OldContractYaml>(content) {
+        eprintln!("⚠ contract.yaml: 检测到旧格式，建议迁移到新格式");
         return old.into_contract();
     }
+    eprintln!("⚠ contract.yaml: 无法按任何格式解析，使用默认值");
     default_contract()
 }
 

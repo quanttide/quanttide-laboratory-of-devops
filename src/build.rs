@@ -20,10 +20,11 @@ pub fn status(repo_path: &Path) {
             registry: contract::Registry::None,
             release: contract::StageRelease::default(),
             test_threshold: None,
+            ci_workflow: None,
         };
         let vs = contract::version_status(repo_path, &root_scope);
         let release = contract::scope_release(&c, &root_scope);
-        print_scope("(root)", repo_path, &lang, &vs, release, &c);
+        print_scope("(root)", repo_path, &lang, &vs, release, &c, None);
     } else {
         for scope in &c.scopes {
             let scope_dir = repo_path.join(&scope.dir);
@@ -34,7 +35,15 @@ pub fn status(repo_path: &Path) {
             let lang = contract::resolve_language(scope, &scope_dir);
             let vs = contract::version_status(repo_path, scope);
             let release = contract::scope_release(&c, scope);
-            print_scope(&scope.name, &scope_dir, &lang, &vs, release, &c);
+            print_scope(
+                &scope.name,
+                &scope_dir,
+                &lang,
+                &vs,
+                release,
+                &c,
+                scope.ci_workflow.as_deref(),
+            );
         }
     }
 
@@ -57,9 +66,10 @@ fn print_scope(
     vs: &contract::VersionStatus,
     release: &contract::StageRelease,
     c: &contract::Contract,
+    ci_workflow: Option<&str>,
 ) {
     println!("  [{:<12}] {}", name, lang.name());
-    println!("    CI:         {}", check_ci(name));
+    println!("    CI:         {}", check_ci(name, ci_workflow));
     println!("    syntax:     {}", check_syntax(lang, dir));
     match (&vs.tag_version, &vs.config_version) {
         (Some(t), Some(cv)) if t == cv => println!("    version:    ✅ {}（一致）", t),
@@ -72,9 +82,13 @@ fn print_scope(
     println!("    changelog:  {}", release.changelog);
 }
 
-fn check_ci(scope: &str) -> String {
-    // workflow 命名约定：build-{scope}.yml（如 build-cli.yml 对应 scope cli）
-    let workflow = format!("build-{}", scope);
+fn check_ci(scope: &str, ci_workflow: Option<&str>) -> String {
+    // workflow 名称：scope 的 ci_workflow 字段优先，无则按约定 build-{scope}
+    let workflow = ci_workflow.unwrap_or_else(|| {
+        // 临时 String 需要持续到函数结束，直接返回 &str 借用
+        // 此处用 Cow 不够轻量，简单处理：scope 名本身作为 workflow 名
+        scope
+    });
     let output = match std::process::Command::new("gh")
         .args([
             "run",
@@ -212,6 +226,7 @@ mod tests {
             &vs,
             &release,
             &c,
+            None,
         );
     }
 

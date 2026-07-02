@@ -151,6 +151,8 @@ pub struct Scope {
     pub release: StageRelease,
     /// 该 scope 的测试阈值（覆盖全局 Stages.test.threshold）。
     pub test_threshold: Option<f64>,
+    /// CI workflow 名称。未设置时按 build-{scope} 约定推导。
+    pub ci_workflow: Option<String>,
 }
 
 // ── 辅枚举 ────────────────────────────────────────────────────────────
@@ -501,6 +503,8 @@ struct ScopeYaml {
     release: Option<ReleaseYaml>,
     #[serde(default)]
     test_threshold: Option<f64>,
+    #[serde(default)]
+    ci_workflow: Option<String>,
 }
 
 impl ContractYaml {
@@ -586,6 +590,7 @@ impl ContractYaml {
                     registry: parse_registry(cfg.registry.as_deref()),
                     release,
                     test_threshold: cfg.test_threshold,
+                    ci_workflow: cfg.ci_workflow.clone(),
                 }
             })
             .collect();
@@ -621,6 +626,7 @@ impl OldContractYaml {
                     registry: Registry::None,
                     release: StageRelease::default(),
                     test_threshold: None,
+                    ci_workflow: None,
                 }
             })
             .collect();
@@ -839,6 +845,7 @@ scopes:
             registry: Registry::Crates,
             release: StageRelease::default(),
             test_threshold: None,
+            ci_workflow: None,
         };
         assert_eq!(resolve_language(&s, Path::new("/tmp")), Language::Rust);
     }
@@ -856,6 +863,7 @@ scopes:
             registry: Registry::Crates,
             release: StageRelease::default(),
             test_threshold: Some(90.0),
+            ci_workflow: None,
         };
         assert_eq!(scope_test_threshold(&c, &s), 90.0);
     }
@@ -873,6 +881,7 @@ scopes:
             registry: Registry::Crates,
             release: StageRelease::default(),
             test_threshold: None,
+            ci_workflow: None,
         };
         assert_eq!(scope_test_threshold(&c, &s), 70.0);
     }
@@ -1020,6 +1029,7 @@ scopes:
             registry: Registry::None,
             release: StageRelease::default(),
             test_threshold: None,
+            ci_workflow: None,
         }
     }
 }

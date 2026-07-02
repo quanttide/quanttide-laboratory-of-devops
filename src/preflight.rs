@@ -35,6 +35,7 @@ pub fn preflight(repo_path: &Path, _contract: &crate::contract::Contract) -> Pre
             registry: crate::contract::Registry::None,
             release: crate::contract::StageRelease::default(),
             test_threshold: None,
+            ci_workflow: None,
         }]
     } else {
         scopes

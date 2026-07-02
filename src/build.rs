@@ -72,10 +72,57 @@ fn print_scope(
     println!("    changelog:  {}", release.changelog);
 }
 
-fn check_ci(_scope: &str) -> String {
-    match std::process::Command::new("gh").arg("--version").output() {
-        Ok(o) if o.status.success() => "gh 可用（需配置）".to_string(),
-        _ => "⚠ gh CLI 未安装".to_string(),
+fn check_ci(scope: &str) -> String {
+    let output = match std::process::Command::new("gh")
+        .args([
+            "run",
+            "list",
+            "--limit",
+            "1",
+            "--workflow",
+            scope,
+            "--json",
+            "conclusion,displayTitle,headBranch,number",
+        ])
+        .output()
+    {
+        Ok(o) if o.status.success() => o.stdout,
+        Ok(_) => return "⚠ 无 CI 运行记录".into(),
+        Err(_) => return "⚠ gh CLI 未安装".into(),
+    };
+
+    let out = String::from_utf8_lossy(&output);
+    // JSON: [{"conclusion":"success","displayTitle":"CI","headBranch":"main","number":42}]
+    // 简单解析：取 conclusion 和 displayTitle/number
+    let conclusion = out
+        .split("\"conclusion\":")
+        .nth(1)
+        .and_then(|s| s.split('"').nth(1))
+        .unwrap_or("");
+    let title = out
+        .split("\"displayTitle\":")
+        .nth(1)
+        .and_then(|s| s.split('"').nth(1))
+        .unwrap_or("");
+    let branch = out
+        .split("\"headBranch\":")
+        .nth(1)
+        .and_then(|s| s.split('"').nth(1))
+        .unwrap_or("?");
+    let number = out
+        .split("\"number\":")
+        .nth(1)
+        .and_then(|s| s.split(',').next())
+        .unwrap_or("?");
+
+    if conclusion.is_empty() {
+        return "⚠ 无 CI 运行记录".into();
+    }
+    match conclusion {
+        "success" => format!("✅ {} ({} #{})", title, branch, number),
+        "failure" => format!("❌ {} ({} #{})", title, branch, number),
+        "cancelled" => format!("🔶 {} 已取消", title),
+        s => format!("⏳ {} ({}) - {}", title, branch, s),
     }
 }
 

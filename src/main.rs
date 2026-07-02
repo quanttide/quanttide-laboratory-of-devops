@@ -5,7 +5,6 @@
 /// - build       build status（CI、语法、版本一致性）
 /// - code        code status（子模块三分法状态模型）
 /// - test        test status（测试结果、覆盖率）
-/// - validate    CI 验证（CHANGELOG、版本一致性）
 /// - preflight   发布前检查（构建、测试、dry-run）
 mod build;
 mod code;

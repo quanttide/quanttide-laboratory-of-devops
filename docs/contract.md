@@ -1,5 +1,70 @@
 # 契约设计记录
 
+## 核心数据结构
+
+```rust
+Contract { stages, platforms, sources, scopes: Vec<Scope> }
+```
+
+四个维度各对应一套配置：
+
+| 维度 | Rust 类型 | 默认值 |
+|------|----------|--------|
+| **Stages** | `Stages { build, test { threshold: 70.0 }, release { changelog, pre_publish } }` | 全局默认，scope 可覆盖 |
+| **Platforms** | `Platforms { source_control, ci, artifact_registry }` | github + github_actions + None |
+| **Sources** | `Sources { version { source_type: Auto, path } }` | 自动检测 |
+| **Scopes** | `Vec<Scope> { name, dir, language, build_tool, registry, release, test_threshold }` | 空列表 |
+
+### 辅助枚举
+
+```rust
+Language      → Rust | Python | Go | Dart | TypeScript | Unknown(String)
+BuildTool     → Cargo | Uv | Go | Flutter | Npm | Unknown(String)
+Registry      → Crates | PyPI | PubDev | Npm | GitHubReleases | Docker | None
+SourceType    → Cargo | Python | Go | Dart | Node | Auto
+```
+
+**兜底策略**：所有 Enum 都有 `Unknown` 或 `None` 变体。`language: zig` 不会让解析崩溃，而是存为 `Language::Unknown("zig")`，后续功能不对它生效。
+
+## 加载逻辑
+
+```rust
+pub fn load(repo_path: &Path) -> Contract
+```
+
+读取 `.quanttide/devops/contract.yaml`：
+
+1. 文件不存在 → 返回 `default_contract()`（四个维度全默认值，scopes 为空）
+2. 存在 → 先尝试按新格式（四维架构）解析
+3. 新格式失败 → 兼容旧格式 `scopes: { cli: src/cli }`
+4. 都失败 → 返回 `default_contract()`
+
+## 版本一致性检查
+
+```rust
+pub fn version_status(repo_path: &Path, scope: &Scope) -> VersionStatus { tag_version, config_version, consistent }
+```
+
+- **tag 版本**：`git tag --sort=-version:refname` 获取最新 tag，按 scope 前缀过滤（如 `cli/`），去 `v` 前缀和 scope 前缀后返回纯版本号
+- **配置版本**：按语言读取 `Cargo.toml` / `pyproject.toml` / `package.json` / `pubspec.yaml`
+- **一致性**：两者都存在时比较是否相等；都为空视为一致；一个为空一个有时视为不一致
+
+## 便捷函数
+
+```rust
+// scope 级覆盖 → 全局默认
+pub fn scope_release(contract, scope) → &StageRelease
+pub fn scope_test_threshold(contract, scope) → f64
+
+// 语言检测
+pub fn resolve_language(scope, scope_dir) → Language
+pub fn detect_by_files(dir) → Language
+
+// 向下兼容
+pub fn load_scopes(repo_path) → Vec<Scope>
+pub fn detect_language(dir) → Language
+```
+
 ## 四维架构映射
 
 理论（`docs/essay/contract/index.md`）→ 代码（`contract.yaml`）

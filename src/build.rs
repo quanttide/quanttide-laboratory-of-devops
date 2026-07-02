@@ -73,6 +73,8 @@ fn print_scope(
 }
 
 fn check_ci(scope: &str) -> String {
+    // workflow 命名约定：build-{scope}.yml（如 build-cli.yml 对应 scope cli）
+    let workflow = format!("build-{}", scope);
     let output = match std::process::Command::new("gh")
         .args([
             "run",
@@ -80,7 +82,7 @@ fn check_ci(scope: &str) -> String {
             "--limit",
             "1",
             "--workflow",
-            scope,
+            &workflow,
             "--json",
             "conclusion,displayTitle,headBranch,number",
         ])

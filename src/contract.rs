@@ -190,6 +190,10 @@ pub enum BuildTool {
 }
 
 impl BuildTool {
+    pub fn is_supported(&self) -> bool {
+        !matches!(self, BuildTool::Unknown(_))
+    }
+
     pub fn name(&self) -> &str {
         match self {
             BuildTool::Cargo => "cargo",
@@ -244,7 +248,10 @@ pub fn load(repo_path: &Path) -> Contract {
     let path = repo_path.join(".quanttide/devops/contract.yaml");
     let content = match std::fs::read_to_string(&path) {
         Ok(c) => c,
-        Err(_) => return default_contract(),
+        Err(_) => {
+            eprintln!("  ℹ contract.yaml 不存在，使用默认契约");
+            return default_contract();
+        }
     };
     parse(&content)
 }

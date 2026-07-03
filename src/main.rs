@@ -9,6 +9,7 @@
 mod build;
 mod code;
 mod contract;
+mod plan;
 mod preflight;
 mod test;
 
@@ -89,6 +90,16 @@ fn main() {
         if result.test_ok { "✅" } else { "❌" },
         if result.dry_run_ok { "✅" } else { "❌" },
     );
+    println!();
+
+    // ── 6. plan status（实验原型） ────────────────────────────────────
+    println!("━━━ 6. plan status（实验原型） ━━━");
+    let roadmap_path = repo_path.join("ROADMAP.md");
+    if roadmap_path.exists() {
+        plan::print_status(&roadmap_path);
+    } else {
+        println!("   未找到 ROADMAP.md");
+    }
     println!();
 
     println!("🔬 演示结束。运行 cargo test 查看各模块单元测试。");

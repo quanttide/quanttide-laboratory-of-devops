@@ -93,12 +93,26 @@ fn main() {
     println!();
 
     // ── 6. plan status（实验原型） ────────────────────────────────────
-    println!("━━━ 6. plan status（实验原型） ━━━");
+    println!("━━━ 6. plan status ━━━");
     let roadmap_path = repo_path.join("ROADMAP.md");
     if roadmap_path.exists() {
         plan::print_status(&roadmap_path);
     } else {
         println!("   未找到 ROADMAP.md");
+    }
+    println!();
+
+    // ── 7. plan doctor（实验原型） ────────────────────────────────────
+    println!("━━━ 7. plan doctor ━━━");
+    if roadmap_path.exists() {
+        let fixes = plan::doctor_roadmap(&roadmap_path);
+        if fixes.is_empty() {
+            println!("   ✅ 格式无误");
+        } else {
+            for f in &fixes {
+                println!("   🛠  L{}: {}", f.line, f.issue);
+            }
+        }
     }
     println!();
 

@@ -227,9 +227,10 @@ pub struct FixNote {
     pub issue: String,
 }
 
-/// 诊断并修复 ROADMAP.md 的格式问题。
+/// 验证 ROADMAP.md 格式，返回规则检测到的问题清单。
 ///
-/// 返回修复记录列表。
+/// 规则只做验证，不做修复。修复由 `doctor_llm`（LLM 驱动）或人工完成。
+/// 当前仅实现规则验证层，LLM 修复留作扩展点。
 pub fn doctor_roadmap(path: &Path) -> Vec<FixNote> {
     let content = match std::fs::read_to_string(path) {
         Ok(c) => c,
@@ -237,88 +238,64 @@ pub fn doctor_roadmap(path: &Path) -> Vec<FixNote> {
     };
 
     let mut fixes: Vec<FixNote> = Vec::new();
-    let mut new_lines: Vec<String> = Vec::new();
 
     for (idx, raw_line) in content.lines().enumerate() {
         let line_num = idx + 1;
         let trimmed = raw_line.trim();
 
-        // 1. 版本标题修复：确保没有 v 前缀
+        // 1. 版本标题禁止 v 前缀
         if trimmed.starts_with("## [") && trimmed.ends_with(']') {
             let ver = trimmed
                 .trim_start_matches("## [")
                 .trim_end_matches(']')
                 .trim();
-            let cleaned = ver.trim_start_matches('v');
-            if cleaned != ver {
+            if ver.starts_with('v') {
                 fixes.push(FixNote {
                     line: line_num,
-                    issue: format!("版本号去除 v 前缀: {} → {}", ver, cleaned),
+                    issue: format!("版本号不应有 v 前缀: {}", ver),
                 });
-                new_lines.push(format!("## [{}]", cleaned));
-                continue;
             }
-            new_lines.push(raw_line.to_string());
-            continue;
         }
 
-        // 2. 分类标题修复：标准化大小写
+        // 2. 分类标题必须使用标准大小写
         if trimmed.starts_with("### ") {
             let lowered = trimmed.to_lowercase();
             if let Some(standard) = CATEGORIES.iter().find(|c| c.to_lowercase() == lowered) {
                 if trimmed != *standard {
                     fixes.push(FixNote {
                         line: line_num,
-                        issue: format!("分类标题大小写: {} → {}", trimmed, standard),
+                        issue: format!("分类标题大小写: 应为 '{}'，当前 '{}'", standard, trimmed),
                     });
-                    // 保留原始缩进
-                    let indent = &raw_line[..raw_line.len() - raw_line.trim_start().len()];
-                    new_lines.push(format!("{}{}", indent, standard));
-                    continue;
                 }
             }
-            new_lines.push(raw_line.to_string());
-            continue;
         }
 
-        // 3. checkbox 格式修复：确保 `[` 后有一个空格
-        if (trimmed.starts_with("- [x]")
-            || trimmed.starts_with("- [X]")
-            || trimmed.starts_with("- [ ]"))
-            && !trimmed.starts_with("- [x]")
-            && !trimmed.starts_with("- [X]")
-            && !trimmed.starts_with("- [ ]")
-        {
-            // 只有格式异常时才修（如 `-[x]`、`-  [x]`）
-            // 正常格式直接通过
-
-            // 统一为 `- [x]` 或 `- [ ]`
-            let content_start = trimmed.find(']').map(|p| p + 1).unwrap_or(trimmed.len());
-            let item_content = trimmed[content_start..].trim();
-            let is_done = trimmed.contains('x') || trimmed.contains('X');
-            let prefix = if is_done { "- [x]" } else { "- [ ]" };
+        // 3. checkbox 必须使用标准格式 `- [x] ` 或 `- [ ] `
+        let has_any_box =
+            trimmed.contains("[x]") || trimmed.contains("[X]") || trimmed.contains("[ ]");
+        let is_standard = trimmed.starts_with("- [x] ")
+            || trimmed.starts_with("- [X] ")
+            || trimmed.starts_with("- [ ] ");
+        if has_any_box && !is_standard {
             fixes.push(FixNote {
                 line: line_num,
-                issue: format!("checkbox 格式修复"),
+                issue: format!("checkbox 格式异常: {}", trimmed),
             });
-            new_lines.push(format!("{} {}", prefix, item_content));
-            continue;
-        }
-
-        new_lines.push(raw_line.to_string());
-    }
-
-    // 写入修复后的内容
-    if !fixes.is_empty() {
-        if let Ok(mut f) = std::fs::File::create(path) {
-            use std::io::Write;
-            for line in &new_lines {
-                writeln!(f, "{}", line).ok();
-            }
         }
     }
 
     fixes
+}
+
+/// LLM 修复扩展点。接收规则验证的问题清单和原始内容，返回修复后的内容。
+///
+/// 当前为桩函数，仅返回 None 表示需人工介入。
+/// 接入 LLM 后：将内容 + 问题清单发给 LLM → LLM 返回修正后的完整 ROADMAP → 写入文件。
+#[allow(dead_code)]
+pub fn doctor_llm(content: &str, issues: &[FixNote]) -> Option<String> {
+    // TODO: 调 LLM API 修复格式
+    // Prompt: "ROADMAP.md 格式问题清单：... 请修复格式，不增删条目内容"
+    None
 }
 
 #[cfg(test)]
@@ -483,9 +460,6 @@ mod tests {
         let d = write_roadmap("## [v0.1.0]\n- [ ] item\n");
         let fixes = doctor_roadmap(&d.path().join("ROADMAP.md"));
         assert!(fixes.iter().any(|f| f.issue.contains("v 前缀")));
-        let content = read_roadmap(d.path());
-        assert!(content.contains("## [0.1.0]"));
-        assert!(!content.contains("## [v0.1.0]"));
     }
 
     #[test]
@@ -493,8 +467,6 @@ mod tests {
         let d = write_roadmap("## [0.1.0]\n### added\n- [ ] item\n");
         let fixes = doctor_roadmap(&d.path().join("ROADMAP.md"));
         assert!(fixes.iter().any(|f| f.issue.contains("大小写")));
-        let content = read_roadmap(d.path());
-        assert!(content.contains("### Added"));
     }
 
     #[test]
@@ -508,7 +480,6 @@ mod tests {
     fn test_doctor_unknown_category_not_touched() {
         let d = write_roadmap("## [0.1.0]\n### Custom\n- [ ] item\n");
         let fixes = doctor_roadmap(&d.path().join("ROADMAP.md"));
-        // Custom 不在标准分类中，不做任何修改
         assert!(fixes.is_empty());
     }
 
@@ -520,16 +491,36 @@ mod tests {
     }
 
     #[test]
-    fn test_doctor_fixes_multiple_issues() {
-        let d = write_roadmap(
-            "## [v0.1.0]\n\
-             ### fixed\n\
-             - [ ] bug\n\
-             ### ADDED\n\
-             - [ ] feature\n",
-        );
+    fn test_doctor_fixes_malformed_checkbox() {
+        let d = write_roadmap("## [0.1.0]\n-[x]no space after dash\n-  [ ] double space\n");
         let fixes = doctor_roadmap(&d.path().join("ROADMAP.md"));
-        // 至少修了两个问题
+        assert!(fixes.iter().any(|f| f.issue.contains("checkbox")));
+    }
+
+    #[test]
+    fn test_doctor_does_not_modify_file() {
+        let original = "## [v0.1.0]\n### added\n-  [x] bad format\n";
+        let d = write_roadmap(original);
+        let _fixes = doctor_roadmap(&d.path().join("ROADMAP.md"));
+        // doctor 是只读的，不修改文件内容
+        assert_eq!(read_roadmap(d.path()), original);
+    }
+
+    #[test]
+    fn test_doctor_standard_checkbox_not_touched() {
+        let d = write_roadmap("## [0.1.0]\n- [x] normal\n- [ ] normal\n");
+        let fixes = doctor_roadmap(&d.path().join("ROADMAP.md"));
+        let checkbox_fixes: Vec<_> = fixes
+            .iter()
+            .filter(|f| f.issue.contains("checkbox"))
+            .collect();
+        assert!(checkbox_fixes.is_empty());
+    }
+
+    #[test]
+    fn test_doctor_fixes_multiple_issues() {
+        let d = write_roadmap("## [v0.1.0]\n### fixed\n- [ ] bug\n### ADDED\n- [ ] feature\n");
+        let fixes = doctor_roadmap(&d.path().join("ROADMAP.md"));
         assert!(fixes.len() >= 2);
     }
 }

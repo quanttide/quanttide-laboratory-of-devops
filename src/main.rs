@@ -102,16 +102,17 @@ fn main() {
     }
     println!();
 
-    // ── 7. plan doctor（实验原型） ────────────────────────────────────
+    // ── 7. plan doctor（规则验证，不修复） ──────────────────────────
     println!("━━━ 7. plan doctor ━━━");
     if roadmap_path.exists() {
-        let fixes = plan::doctor_roadmap(&roadmap_path);
-        if fixes.is_empty() {
+        let issues = plan::doctor_roadmap(&roadmap_path);
+        if issues.is_empty() {
             println!("   ✅ 格式无误");
         } else {
-            for f in &fixes {
-                println!("   🛠  L{}: {}", f.line, f.issue);
+            for f in &issues {
+                println!("   ⚠ L{}: {}", f.line, f.issue);
             }
+            println!("   规则仅做验证，修复由 LLM 完成（当前未接入）");
         }
     }
     println!();

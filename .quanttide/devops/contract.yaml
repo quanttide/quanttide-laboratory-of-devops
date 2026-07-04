@@ -1,0 +1,11 @@
+stages:
+  release:
+    changelog: CHANGELOG.md
+
+scopes:
+  lab:
+    dir: packages/lab
+    language: rust
+    build_tool: cargo
+    release:
+      changelog: CHANGELOG.md

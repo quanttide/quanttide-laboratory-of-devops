@@ -558,6 +558,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "parse-changelog"
+version = "0.6.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c0878368d958d9eac74fcbbe62d3fa9fc0e6f1c2ea7c16f9cdbd7232722d58d9"
+dependencies = [
+ "indexmap",
+ "memchr",
+ "regex",
+]
+
+[[package]]
 name = "percent-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -595,16 +606,18 @@ dependencies = [
 
 [[package]]
 name = "qtcloud-devops-cli"
-version = "0.6.1"
+version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e3c3f449a09ad277ff7822410a5c2e4f1a5b8a247d46cf59784cbe5fbaba9ad7"
+checksum = "b90c77db39397cb6026e7bc1bd2296d5799478a1b0098f6d49e3e4aa7afa0880"
 dependencies = [
  "clap",
  "git2",
  "quanttide-agent",
+ "quanttide-devops",
  "regex",
  "serde",
  "serde_json",
+ "serde_yaml",
  "uuid",
 ]
 
@@ -617,6 +630,18 @@ dependencies = [
  "serde",
  "serde_json",
  "ureq",
+]
+
+[[package]]
+name = "quanttide-devops"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4f6af0252bf5281a46615899a3960daf5e761e56c2504dc53919c02679ae4246"
+dependencies = [
+ "git2",
+ "parse-changelog",
+ "serde",
+ "serde_yaml",
 ]
 
 [[package]]

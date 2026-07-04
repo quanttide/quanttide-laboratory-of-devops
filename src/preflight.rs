@@ -20,56 +20,22 @@ impl PreflightResult {
 }
 
 /// 执行发布前检查。
-pub fn preflight(repo_path: &Path, _contract: &crate::contract::Contract) -> PreflightResult {
+pub fn preflight(
+    repo_path: &Path,
+    _contract: &qtcloud_devops_cli::contract::Contract,
+) -> PreflightResult {
     println!("preflight");
 
     // 从契约读版本状态
-    let scopes = crate::contract::load_scopes(repo_path);
-    let scopes: Vec<crate::contract::Scope> = if scopes.is_empty() {
-        vec![crate::contract::Scope {
-            name: "(root)".into(),
-            dir: ".".into(),
-            language: crate::contract::Language::Unknown(String::new()),
-            framework: String::new(),
-            build_tool: crate::contract::BuildTool::Unknown(String::new()),
-            registry: crate::contract::Registry::None,
-            release: crate::contract::StageRelease::default(),
-            test_threshold: None,
-            ci_workflow: None,
-        }]
-    } else {
-        scopes
-    };
-
-    let mut version = "?".to_string();
-    for s in &scopes {
-        // 语言/构建工具未知时输出警告，不阻断流程
-        if !s.language.is_supported() {
-            eprintln!("  ⚠ {}: 语言 {:?} 未知，相关检查跳过", s.name, s.language);
-        }
-        if !s.build_tool.is_supported() {
-            eprintln!(
-                "  ⚠ {}: 构建工具 {} 未知，语法校验跳过",
-                s.name,
-                s.build_tool.name()
-            );
-        }
-        let vs = crate::contract::version_status(repo_path, s);
-        match &vs.config_version {
-            Some(v) => {
-                let icon = if vs.consistent {
-                    "✅"
-                } else {
-                    "⚠ tag不匹配"
-                };
-                println!("  {}: {} {}", s.name, v, icon);
-                if version == "?" {
-                    version = v.clone();
-                }
-            }
-            None => println!("  {}: ? 未检测到版本", s.name),
-        }
-    }
+    let version = qtcloud_devops_cli::contract::load(repo_path)
+        .scopes
+        .first()
+        .and_then(|s| {
+            let vs = qtcloud_devops_cli::contract::version_status(repo_path, s);
+            vs.config_version.clone()
+        })
+        .unwrap_or_else(|| "?".to_string());
+    println!("  版本: {}", version);
     println!();
 
     let build_ok = run_build(repo_path);
@@ -191,7 +157,8 @@ mod tests {
     fn test_preflight_no_cargo_toml() {
         let d = tempfile::tempdir().unwrap();
         // 无 contract.yaml，使用默认契约
-        let c = crate::contract::load(d.path());
+        let c = qtcloud_devops_cli::contract::load(d.path());
+        // preflight 简化为跳过空目录
         let r = preflight(d.path(), &c);
         // 无 Cargo.toml 时所有步骤跳过，preflight 通过
         assert!(r.all_pass());

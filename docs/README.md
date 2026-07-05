@@ -2,11 +2,12 @@
 
 当前实验模块：
 
-| 模块 | 说明 | 状态 |
-|------|------|------|
+| 模块 | 说明 | 报告 | 状态 |
+|------|------|------|------|
 | `bin/detect` | 版本号自动检测 — 从 git 历史推断 scope/minor/patch/预发布 | [docs/detect.md](docs/detect.md) | 原型 |
 | `preflight` | 发布前检查 — 依次执行 build → test → dry-run | — | 原型 |
 | `release` | 发布流程编排 — 封装 precheck → publish → postcheck | — | 原型 |
+| `git-exp` | git2 vs gix API 与性能对比 | [报告](../../data/report/lab/git-exp.md) | 实验 |
 
 ## preflight — 发布前检查
 

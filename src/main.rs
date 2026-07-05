@@ -4,6 +4,7 @@
 /// - preflight   发布前检查（构建、测试、dry-run）—— 尚未集成到 CLI
 /// - release     发布流程编排 —— 原型，对应 devops-release skill
 /// - detect     版本号自动检测（bin） —— 实验 devops-release 规则
+mod git_experiment;
 mod preflight;
 mod release;
 
@@ -13,6 +14,7 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() > 1 {
         match args[1].as_str() {
+            "git-exp" => git_experiment::run(&repo_path),
             "release" => run_release(&args[2..], &repo_path),
             _ => {
                 eprintln!("未知子命令: {}", args[1]);
@@ -47,7 +49,7 @@ fn main() {
     release::precheck(&repo_path);
     println!();
 
-    println!("🔬 实验模块: preflight / release");
+    println!("🔬 实验模块: preflight / release / git-exp");
     println!("   实验 binary: cargo run --bin detect");
     println!("   发布演示: cargo run -- release publish v0.1.0-rc.1");
 }

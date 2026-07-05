@@ -48,6 +48,9 @@ struct LlmDecision {
 fn detect_version(repo_path: &Path) -> Result<bool, String> {
     let repo = git2::Repository::discover(repo_path).map_err(|e| format!("打开仓库失败: {}", e))?;
 
+    let project_type = detect_project_type(&repo);
+    println!("📌 项目类型: {}", project_type);
+
     let scopes = detect_scopes(&repo)?;
     if scopes.is_empty() {
         return Err("没有找到匹配的 scope".into());
@@ -58,7 +61,7 @@ fn detect_version(repo_path: &Path) -> Result<bool, String> {
     let mut results: Vec<(String, String)> = Vec::new();
 
     for scope in &scopes {
-        match detect_version_for_scope(&repo, scope) {
+        match detect_version_for_scope(&repo, scope, project_type) {
             Ok(Some(v)) => {
                 results.push((scope.clone(), v));
             }
@@ -91,6 +94,7 @@ fn detect_version(repo_path: &Path) -> Result<bool, String> {
 fn detect_version_for_scope(
     repo: &git2::Repository,
     scope: &str,
+    project_type: &str,
 ) -> Result<Option<String>, String> {
     println!("\n--- {} ---", scope);
 
@@ -155,7 +159,7 @@ fn detect_version_for_scope(
 
     // ── 3. LLM 推断版本（回退到启发式规则）───────────────────────────
     let llm_tag = latest_tag.as_deref().unwrap_or("(新项目，无版本标签)");
-    let decision = llm_decide(&commits, llm_tag, scope)?;
+    let decision = llm_decide(&commits, llm_tag, project_type, scope)?;
 
     println!("🧠 LLM 决策: {}", decision.reason);
     match decision.action.as_str() {
@@ -194,7 +198,12 @@ fn detect_version_for_scope(
 }
 
 /// 调用 LLM 决定版本策略。未配置 LLM 时回退到启发式规则。
-fn llm_decide(commits: &[String], latest_tag: &str, scope: &str) -> Result<LlmDecision, String> {
+fn llm_decide(
+    commits: &[String],
+    latest_tag: &str,
+    project_type: &str,
+    scope: &str,
+) -> Result<LlmDecision, String> {
     let settings = Settings::from_env();
     if settings.llm_api_key.is_empty() {
         return Ok(fallback_heuristic(commits));
@@ -218,15 +227,28 @@ fn llm_decide(commits: &[String], latest_tag: &str, scope: &str) -> Result<LlmDe
 
 ## 约束
 - 不做 major bump（breaking change 交给人类）
-- 仅非逻辑改动（typo/注释/CI/README）→ skip
+- 仅 chore/typo/CI 配置 → skip
+- `docs:` 是内容变更（文档项目的交付物），不是非逻辑改动
 - patch 级别修复 → 直发正式版
-- minor 级别新功能 → 走预发布（优先 rc）
+- minor 级别新功能 → 代码项目走预发布（rc），文档项目直发正式
 - 大版本早期未完成功能 → alpha
 - 功能基本完成 → beta
 - 功能冻结只修 bug → rc
 - 已在预发布系列 → 同阶段递增序号（除非有理由晋级下一阶段）
 
+### 如何判断 minor vs patch
+
+**代码项目：**
+- `feat:` → minor（追加新能力）
+- `fix: / refactor: / test:` → patch（修问题）
+
+**内容/文档项目：**
+- **绝大多数变更都是 patch**。新增文档、更新内容、格式规范化、目录结构调整都是日常工作。
+- minor 仅限全新内容品类上线的程度（例如从零搭建了一整套新手册），极少发生。
+- 不确定时就 patch。
+
 ## 当前版本
+项目类型: {project_type}
 最新 tag: {tag}
 scope: {scope}
 
@@ -238,6 +260,7 @@ scope: {scope}
 "#,
         tag = latest_tag,
         scope = scope,
+        project_type = project_type,
         commits = commits_text,
     );
 
@@ -264,7 +287,16 @@ scope: {scope}
     Ok(decision)
 }
 
-/// 启发式回退规则（与 devops-release skill 一致）。
+/// 启发式回退规则。
+///
+/// 区分 feat（minor）和非 feat（patch），但统一直发正式无预发布。
+/// 预发布仅由 LLM 在有项目类型上下文时决定。
+///
+/// 规则：
+/// - breaking → 交给人类
+/// - `feat:` → minor，直发正式
+/// - `fix:/docs:/refactor:/test:` → patch，直发正式
+/// - 仅 chore/typo/CI → 跳过
 fn fallback_heuristic(commits: &[String]) -> LlmDecision {
     let mut has_feat = false;
     let mut has_breaking = false;
@@ -279,6 +311,7 @@ fn fallback_heuristic(commits: &[String]) -> LlmDecision {
             has_feat = true;
             has_logic_change = true;
         } else if lower.starts_with("fix")
+            || lower.starts_with("docs")
             || lower.starts_with("refactor")
             || lower.starts_with("test")
             || msg.contains("Fixed")
@@ -293,7 +326,7 @@ fn fallback_heuristic(commits: &[String]) -> LlmDecision {
             action: "skip".into(),
             increment: None,
             prerelease: None,
-            reason: "只有非逻辑改动（typo/注释/CI/README），无需发版".into(),
+            reason: "仅有 chore/typo/CI 改动，无需发版".into(),
         };
     }
 
@@ -310,15 +343,15 @@ fn fallback_heuristic(commits: &[String]) -> LlmDecision {
         LlmDecision {
             action: "release".into(),
             increment: Some("minor".into()),
-            prerelease: Some("rc".into()),
-            reason: "包含 feat，minor 增量走 rc 预发布".into(),
+            prerelease: None,
+            reason: "包含 feat，minor 增量直发正式".into(),
         }
     } else {
         LlmDecision {
             action: "release".into(),
             increment: Some("patch".into()),
             prerelease: None,
-            reason: "仅修复/重构，patch 增量直发正式".into(),
+            reason: "包含 docs/fix/refactor，patch 增量直发正式".into(),
         }
     }
 }
@@ -352,6 +385,38 @@ fn prefix_version(scope: &str, version: &str) -> String {
         version.to_string()
     } else {
         format!("{}/{}", scope, version)
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// 项目类型检测
+// ═════════════════════════════════════════════════════════════════════
+
+/// 检测项目类型：code（代码项目）或 docs（文档项目）。
+///
+/// 简单规则：仓库根目录存在 src/、Cargo.toml、package.json 等
+/// 代码指示物 → code，否则 → docs。
+fn detect_project_type(repo: &git2::Repository) -> &'static str {
+    let workdir = match repo.workdir() {
+        Some(d) => d,
+        None => return "unknown",
+    };
+
+    let indicators = [
+        workdir.join("src").is_dir(),
+        workdir.join("Cargo.toml").exists(),
+        workdir.join("package.json").exists(),
+        workdir.join("pyproject.toml").exists(),
+        workdir.join("setup.py").exists(),
+        workdir.join("go.mod").exists(),
+        workdir.join("packages").is_dir(), // monorepo
+        workdir.join("apps").is_dir(),     // monorepo
+    ];
+
+    if indicators.iter().any(|&x| x) {
+        "code"
+    } else {
+        "docs"
     }
 }
 
@@ -649,7 +714,7 @@ mod tests {
         let d = fallback_heuristic(&commits);
         assert_eq!(d.action, "release");
         assert_eq!(d.increment.as_deref(), Some("minor"));
-        assert_eq!(d.prerelease.as_deref(), Some("rc"));
+        assert!(d.prerelease.is_none());
     }
 
     #[test]
@@ -662,8 +727,17 @@ mod tests {
     }
 
     #[test]
-    fn test_fallback_heuristic_skip() {
+    fn test_fallback_heuristic_docs() {
         let commits = vec!["docs: update readme".into()];
+        let d = fallback_heuristic(&commits);
+        assert_eq!(d.action, "release");
+        assert_eq!(d.increment.as_deref(), Some("patch"));
+        assert!(d.prerelease.is_none());
+    }
+
+    #[test]
+    fn test_fallback_heuristic_skip() {
+        let commits = vec!["chore: bump version".into()];
         let d = fallback_heuristic(&commits);
         assert_eq!(d.action, "skip");
     }

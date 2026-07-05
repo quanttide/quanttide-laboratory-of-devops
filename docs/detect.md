@@ -1,12 +1,41 @@
 # detect — 版本号自动检测
 
-读取最新 tag → 扫描提交 → 按 devops-release 规则推断版本号。
+读取最新 tag → 扫描提交 → 优先调用 LLM 按 devops-release skill 规则推断版本号，未配置 LLM 时回退到启发式规则。
 
 ```bash
 cargo run --bin detect -- <repo-path>
 ```
 
-## 规则
+## 依赖
+
+需要 `quanttide-agent` crate。LLM 通过以下环境变量配置（可选）：
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `LLM_API_KEY` | — | DeepSeek API Key（未设置时回退到启发式规则） |
+| `LLM_MODEL` | `deepseek-chat` | 模型名 |
+| `LLM_BASE_URL` | `https://api.deepseek.com` | API 地址 |
+
+## LLM 决策
+
+LLM 收到：提交记录列表、最新 tag、scope、当前预发布阶段。
+
+LLM 输出结构化 JSON，决定：
+
+| 字段 | 取值 | 含义 |
+|------|------|------|
+| `action` | `release` / `skip` / `human` | 发版 / 跳过 / 交给人类 |
+| `increment` | `minor` / `patch` / `null` | 增量类型 |
+| `prerelease` | `alpha` / `beta` / `rc` / `null` | 预发布阶段 |
+| `reason` | 文本 | 判断理由 |
+
+LLM 覆盖了硬编码规则无法处理的场景：
+- **变更规模判断**：新增命令 vs 新增选项，都能区分为 minor 或 patch
+- **预发布起始阶段**：根据功能完成度决定从 alpha/beta/rc 开始
+- **阶段晋级**：判断 alpha → beta → rc 的晋级时机
+- **紧急 bug 修复**：决定直发 patch 还是走 rc 验证
+
+## 回退规则（LLM 未配置时）
 
 规则基于以下假设（来自 devops-release skill）：
 
@@ -27,18 +56,6 @@ cargo run --bin detect -- <repo-path>
 
 1. `detect_scope()` — 从 contract.yaml + changed files 推断 scope
 2. `collect_tags_with_scope()` — 按 scope 分组，semver 排序
-3. 扫描 tag→HEAD 提交，分类 feat/fix/chore
-4. 输出 `scope/vX.Y.Z` 或 `scope/vX.Y.Z-rc.N`
-
-## 未覆盖的规则
-
-当前原型做了简化，以下规则尚未实现：
-
-| 规则 | SKILL.md 要求 | 现状 |
-|------|-------------|------|
-| 变更规模判断 | 重大变更（新命令/重构）→ minor，小 feat → patch | 所有 `feat:` 都算 minor，未区分规模 |
-| 预发布起始阶段 | 可选 alpha / beta / rc，取决于变更规模 | 永远从 `-rc.1` 开始 |
-| 阶段晋级 | alpha → beta → rc，阶段切换时序号重置 | 仅同阶段递增，不切换 |
-| 紧急 bug 修复 | 从正式版发 `patch-rc.1` 验证后转正式 | 直接推断 patch 直发正式，无 rc 验证路径 |
-| 多 scope 冲突 | 询问用户如何处理 | 直接报错退出，无交互 |
-| 不确定时问用户 | 兜底原则 | 无交互能力 |
+3. 扫描 tag→HEAD 提交，收集提交记录
+4. `llm_decide()` — 调用 LLM 决策（回退 `fallback_heuristic()`）
+5. `build_version()` — 根据决策构建版本号

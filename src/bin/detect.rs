@@ -1,12 +1,21 @@
-/// 版本号自动检测原型 — 实验 devops-release skill 中的 AI 决策规则。
+/// 版本号自动检测 — LLM 驱动的版本号推断。
+///
+/// 保留基础设施函数（tag 读取、提交扫描、scope 检测），
+/// 将版本增量决策交给 LLM，覆盖 devops-release skill 中
+/// 硬编码规则无法处理的场景（变更规模、预发布阶段、阶段晋级等）。
+///
+/// 多个 scope 有变更时各自独立判断。
 ///
 /// 用法:
 ///   cargo run --bin detect -- <repo-path>
 ///
-/// 修复:
-///   1. tag 按 semver 排序，scope tag 和无 scope tag 不混淆
-///   2. scope 从 changed files 匹配 contract.yaml 推断
-///   3. 子模组通过 discover 支持
+/// 依赖环境变量:
+///   LLM_API_KEY  — DeepSeek API Key（可选，未设置时回退到启发式规则）
+///   LLM_MODEL    — 模型名（默认 deepseek-chat）
+///   LLM_BASE_URL — API 地址（默认 https://api.deepseek.com）
+use quanttide_agent::llm::{CompleteOptions, LLM};
+use quanttide_agent::message::Message;
+use quanttide_agent::Settings;
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -17,7 +26,8 @@ fn main() {
         .unwrap_or_else(|| std::env::current_dir().unwrap());
 
     match detect_version(&repo_path) {
-        Ok(v) => println!("{}", v),
+        Ok(true) => {} // 结果已在内部打印
+        Ok(false) => println!("无需发版"),
         Err(e) => {
             eprintln!("❌ {}", e);
             std::process::exit(1);
@@ -25,48 +35,104 @@ fn main() {
     }
 }
 
-fn detect_version(repo_path: &Path) -> Result<String, String> {
+/// LLM 决策输出。
+#[derive(serde::Deserialize)]
+struct LlmDecision {
+    action: String,             // "release" | "skip" | "human"
+    increment: Option<String>,  // "minor" | "patch" | null
+    prerelease: Option<String>, // "alpha" | "beta" | "rc" | null
+    reason: String,
+}
+
+/// 调度层：检测所有有变更的 scope，各自独立运行完整版本推断管道。
+fn detect_version(repo_path: &Path) -> Result<bool, String> {
     let repo = git2::Repository::discover(repo_path).map_err(|e| format!("打开仓库失败: {}", e))?;
 
-    // ── 1. 确定 scope ────────────────────────────────────────────
-    let scope = detect_scope(&repo)?;
-    println!("📌 scope: {:?}", scope);
-
-    // ── 2. 读最新 tag（按 scope 过滤 + semver 排序）───────────────
-    let latest_tag = get_latest_tag_for_scope(&repo, scope.as_deref())
-        .ok_or_else(|| "没有找到版本标签，请手动指定版本号".to_string())?;
-    println!("📦 最新标签: {}", latest_tag);
-
-    let (_, ver_str) = parse_tag(&latest_tag);
-    let (major, minor, patch, pre_stage, pre_num) = parse_version(ver_str)?;
-    println!("   v{}.{}.{}", major, minor, patch);
-    if let Some(ref stage) = pre_stage {
-        println!("   预发布: {}.{}", stage, pre_num.unwrap_or(0));
+    let scopes = detect_scopes(&repo)?;
+    if scopes.is_empty() {
+        return Err("没有找到匹配的 scope".into());
     }
 
-    // ── 3. 扫描 tag→HEAD 提交 ──────────────────────────────────────
-    let tag_oid = repo
-        .find_reference(&format!("refs/tags/{}", latest_tag))
-        .and_then(|r| r.target().ok_or_else(|| git2::Error::from_str("")))
-        .map_err(|_| "找不到标签引用")?;
+    println!("📌 检测到 scope: {:?}", scopes);
+
+    let mut results: Vec<(String, String)> = Vec::new();
+
+    for scope in &scopes {
+        match detect_version_for_scope(&repo, scope) {
+            Ok(Some(v)) => {
+                results.push((scope.clone(), v));
+            }
+            Ok(None) => {}
+            Err(e) => {
+                eprintln!("   ⚠ {}: {}", scope, e);
+            }
+        }
+    }
+
+    if results.is_empty() {
+        return Ok(false);
+    }
+
+    if results.len() == 1 {
+        let (s, v) = &results[0];
+        let prefixed = prefix_version(s, v);
+        println!("\n🔮 推断版本: {}", prefixed);
+    } else {
+        println!("\n🔮 各 scope 推断结果:");
+        for (s, v) in &results {
+            println!("   {}/{}", s, v);
+        }
+    }
+
+    Ok(true)
+}
+
+/// 单个 scope 的版本推断管道。
+fn detect_version_for_scope(
+    repo: &git2::Repository,
+    scope: &str,
+) -> Result<Option<String>, String> {
+    println!("\n--- {} ---", scope);
+
+    // ── 1. 读最新 tag（可能没有）───────────────────────────────────
     let head_oid = repo
         .head()
         .and_then(|h| h.target().ok_or_else(|| git2::Error::from_str("")))
         .map_err(|_| "找不到 HEAD")?;
 
-    if head_oid == tag_oid {
-        return Err("上次标签后没有新提交".into());
-    }
+    let (latest_tag, major, minor, patch, pre_stage, pre_num, is_first) =
+        match get_latest_tag_for_scope(repo, Some(scope)) {
+            Some(ref tag) => {
+                let (_, ver_str) = parse_tag(tag);
+                let (ma, mi, pa, st, nu) = parse_version(ver_str)?;
+                println!("📦 最新标签: {}", tag);
+                println!("   v{}.{}.{}", ma, mi, pa);
+                if let Some(ref stage) = st {
+                    println!("   预发布: {}.{}", stage, nu.unwrap_or(0));
+                }
+                (Some(tag.clone()), ma, mi, pa, st, nu, false)
+            }
+            None => {
+                println!("📦 没有版本标签（新项目）");
+                (None, 0, 1, 0, None, None, true)
+            }
+        };
 
+    // ── 2. 扫描提交 ──────────────────────────────────────────────────
     let mut revwalk = repo.revwalk().map_err(|_| "创建 revwalk 失败")?;
     revwalk.push(head_oid).ok();
-    revwalk.hide(tag_oid).ok();
+    if let Some(ref tag) = latest_tag {
+        let tag_oid = repo
+            .find_reference(&format!("refs/tags/{}", tag))
+            .and_then(|r| r.target().ok_or_else(|| git2::Error::from_str("")))
+            .map_err(|_| "找不到标签引用")?;
+        if head_oid == tag_oid {
+            return Err("上次标签后没有新提交".into());
+        }
+        revwalk.hide(tag_oid).ok();
+    }
 
-    let mut has_feat = false;
-    let mut has_breaking = false;
-    let mut has_logic_change = false;
     let mut commits: Vec<String> = Vec::new();
-
     for oid in revwalk {
         let oid = match oid {
             Ok(o) => o,
@@ -74,105 +140,256 @@ fn detect_version(repo_path: &Path) -> Result<String, String> {
         };
         if let Ok(commit) = repo.find_commit(oid) {
             let msg = commit.summary().unwrap_or("").to_string();
-            commits.push(msg.clone());
-            let lower = msg.to_lowercase();
-
-            if lower.contains("breaking") || (msg.contains('!') && lower.starts_with("feat")) {
-                has_breaking = true;
-                has_logic_change = true;
-            } else if lower.starts_with("feat") || msg.contains("Added") {
-                has_feat = true;
-                has_logic_change = true;
-            } else if lower.starts_with("fix")
-                || lower.starts_with("refactor")
-                || lower.starts_with("test")
-                || msg.contains("Fixed")
-                || msg.contains("Changed")
-            {
-                has_logic_change = true;
-            }
+            commits.push(msg);
         }
     }
 
-    println!("\n📝 提交数: {}", commits.len());
+    println!("📝 提交数: {}", commits.len());
     for c in &commits {
         println!("   • {}", c);
     }
 
+    if commits.is_empty() {
+        return Err("没有提交记录".into());
+    }
+
+    // ── 3. LLM 推断版本（回退到启发式规则）───────────────────────────
+    let llm_tag = latest_tag.as_deref().unwrap_or("(新项目，无版本标签)");
+    let decision = llm_decide(&commits, llm_tag, scope)?;
+
+    println!("🧠 LLM 决策: {}", decision.reason);
+    match decision.action.as_str() {
+        "skip" => {
+            if is_first {
+                // 新项目：首个版本始终发 v0.1.0，不论提交类型
+            } else {
+                return Ok(None);
+            }
+        }
+        "human" => return Err(format!("需要人类判断: {}", decision.reason)),
+        _ => {}
+    }
+
+    let new_version = if is_first {
+        // 新项目：首个版本固定为 v0.1.0，预发布阶段由 LLM 决定
+        match decision.prerelease.as_deref() {
+            Some(pr) => format!("v0.1.0-{}.1", pr),
+            None => "v0.1.0".to_string(),
+        }
+    } else {
+        let increment = decision.increment.as_deref().unwrap_or("patch");
+        build_version(
+            major,
+            minor,
+            patch,
+            pre_stage.as_deref(),
+            pre_num,
+            increment,
+            decision.prerelease.as_deref(),
+        )
+    };
+
+    println!("🔮 推断版本: {}", prefix_version(scope, &new_version));
+    Ok(Some(new_version))
+}
+
+/// 调用 LLM 决定版本策略。未配置 LLM 时回退到启发式规则。
+fn llm_decide(commits: &[String], latest_tag: &str, scope: &str) -> Result<LlmDecision, String> {
+    let settings = Settings::from_env();
+    if settings.llm_api_key.is_empty() {
+        return Ok(fallback_heuristic(commits));
+    }
+
+    let llm = LLM::new(
+        &settings.llm_model,
+        &settings.llm_base_url,
+        &settings.llm_api_key,
+    );
+
+    let commits_text = commits
+        .iter()
+        .enumerate()
+        .map(|(i, c)| format!("{}. {}", i + 1, c))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let prompt = format!(
+        r#"你是一个版本号推断专家。根据以下信息，决定下一个版本号策略。
+
+## 约束
+- 不做 major bump（breaking change 交给人类）
+- 仅非逻辑改动（typo/注释/CI/README）→ skip
+- patch 级别修复 → 直发正式版
+- minor 级别新功能 → 走预发布（优先 rc）
+- 大版本早期未完成功能 → alpha
+- 功能基本完成 → beta
+- 功能冻结只修 bug → rc
+- 已在预发布系列 → 同阶段递增序号（除非有理由晋级下一阶段）
+
+## 当前版本
+最新 tag: {tag}
+scope: {scope}
+
+## 提交记录（tag→HEAD）
+{commits}
+
+## 输出格式（仅 JSON）
+{{"action": "release"|"skip"|"human", "increment": "minor"|"patch"|null, "prerelease": "alpha"|"beta"|"rc"|null, "reason": "判断理由"}}
+"#,
+        tag = latest_tag,
+        scope = scope,
+        commits = commits_text,
+    );
+
+    let messages = vec![
+        Message::new(
+            "system",
+            "你是一个严格的版本号推断工具。只输出 JSON，不要额外内容。",
+        ),
+        Message::new("user", &prompt),
+    ];
+
+    let options = CompleteOptions {
+        response_format: Some(serde_json::json!({"type": "json_object"})),
+        ..Default::default()
+    };
+
+    let resp = llm
+        .complete(&messages, options)
+        .map_err(|e| format!("LLM 调用失败: {}", e.0))?;
+
+    let decision: LlmDecision = serde_json::from_str(&resp.content)
+        .map_err(|e| format!("LLM 输出解析失败: {} — 原始输出: {}", e, resp.content))?;
+
+    Ok(decision)
+}
+
+/// 启发式回退规则（与 devops-release skill 一致）。
+fn fallback_heuristic(commits: &[String]) -> LlmDecision {
+    let mut has_feat = false;
+    let mut has_breaking = false;
+    let mut has_logic_change = false;
+
+    for msg in commits {
+        let lower = msg.to_lowercase();
+        if lower.contains("breaking") || (msg.contains('!') && lower.starts_with("feat")) {
+            has_breaking = true;
+            has_logic_change = true;
+        } else if lower.starts_with("feat") || msg.contains("Added") {
+            has_feat = true;
+            has_logic_change = true;
+        } else if lower.starts_with("fix")
+            || lower.starts_with("refactor")
+            || lower.starts_with("test")
+            || msg.contains("Fixed")
+            || msg.contains("Changed")
+        {
+            has_logic_change = true;
+        }
+    }
+
     if !has_logic_change {
-        return Err("只有非逻辑改动（typo/注释/CI/README），无需发版".into());
+        return LlmDecision {
+            action: "skip".into(),
+            increment: None,
+            prerelease: None,
+            reason: "只有非逻辑改动（typo/注释/CI/README），无需发版".into(),
+        };
     }
 
     if has_breaking {
-        return Err("包含 breaking change，请人类指定 major 版本号".into());
+        return LlmDecision {
+            action: "human".into(),
+            increment: None,
+            prerelease: None,
+            reason: "包含 breaking change，请人类指定 major 版本号".into(),
+        };
     }
 
-    // ── 4. 推断新版本 ────────────────────────────────────────────
-    let new_version = if let Some(stage) = pre_stage {
-        let next = pre_num.unwrap_or(0) + 1;
-        format!("v{}.{}.{}-{}.{}", major, minor, patch, stage, next)
-    } else if has_feat {
-        format!("v{}.{}.{}-rc.1", major, minor + 1, 0)
+    if has_feat {
+        LlmDecision {
+            action: "release".into(),
+            increment: Some("minor".into()),
+            prerelease: Some("rc".into()),
+            reason: "包含 feat，minor 增量走 rc 预发布".into(),
+        }
     } else {
-        format!("v{}.{}.{}", major, minor, patch + 1)
-    };
+        LlmDecision {
+            action: "release".into(),
+            increment: Some("patch".into()),
+            prerelease: None,
+            reason: "仅修复/重构，patch 增量直发正式".into(),
+        }
+    }
+}
 
-    let prefix = match scope {
-        Some(ref s) if !s.is_empty() && s != "(root)" => format!("{}/", s),
-        _ => String::new(),
-    };
+/// 根据决策构建版本字符串（不含 scope 前缀）。
+fn build_version(
+    major: u32,
+    minor: u32,
+    patch: u32,
+    pre_stage: Option<&str>,
+    pre_num: Option<u32>,
+    increment: &str,
+    prerelease: Option<&str>,
+) -> String {
+    if let Some(stage) = pre_stage {
+        // 已在预发布系列 → 同阶段递增序号
+        let next = pre_num.unwrap_or(0) + 1;
+        return format!("v{}.{}.{}-{}.{}", major, minor, patch, stage, next);
+    }
 
-    let result = format!("{}{}", prefix, new_version);
-    println!("\n🔮 推断版本: {}", result);
-    Ok(result)
+    match (increment, prerelease) {
+        ("minor", Some(pr)) => format!("v{}.{}.{}-{}.1", major, minor + 1, 0, pr),
+        ("minor", None) => format!("v{}.{}.{}", major, minor + 1, 0),
+        _ => format!("v{}.{}.{}", major, minor, patch + 1),
+    }
+}
+
+/// 为版本字符串添加 scope 前缀。
+fn prefix_version(scope: &str, version: &str) -> String {
+    if scope.is_empty() || scope == "(root)" {
+        version.to_string()
+    } else {
+        format!("{}/{}", scope, version)
+    }
 }
 
 // ═════════════════════════════════════════════════════════════════════
 // scope 检测
 // ═════════════════════════════════════════════════════════════════════
 
-/// 从 changed files + contract.yaml 推断 scope。
-fn detect_scope(repo: &git2::Repository) -> Result<Option<String>, String> {
-    // 先查 contract.yaml → scope 目录映射
+/// 从 changed files + contract.yaml 检测所有有变更的 scope。
+fn detect_scopes(repo: &git2::Repository) -> Result<Vec<String>, String> {
     let scopes = load_contract_scopes(repo.workdir().unwrap_or(Path::new(".")));
-
-    // 从 changed files 推断：head 与最新 tag 间的差异文件
     let changed_paths = get_changed_paths_since_last_tag(repo)?;
 
-    // 匹配 scope：统计每个 scope 命中的文件数（无变更文件时跳过）
-    let mut hits: HashMap<&str, usize> = HashMap::new();
+    // 从 changed files 匹配 scope
+    let mut hits: HashMap<String, usize> = HashMap::new();
     for path in &changed_paths {
         for (name, dir) in &scopes {
             if path.starts_with(dir.trim_start_matches('/')) || path.contains(dir) {
-                *hits.entry(name).or_insert(0) += 1;
+                *hits.entry(name.clone()).or_insert(0) += 1;
             }
         }
     }
 
-    // 取命中最多的 scope
-    let best = hits.iter().max_by_key(|(_, c)| *c);
-    match best {
-        Some((name, count)) if *count > 0 => {
-            println!(
-                "   从 changed files 推断 scope={}, 命中 {} 文件",
-                name, count
-            );
-            Ok(Some(name.to_string()))
-        }
-        _ => {
-            // 回退：取最常见的 scoped tag，忽略孤立的 root tag
-            let all_tags = collect_tags_with_scope(repo);
-            let scoped: Vec<&String> = all_tags.keys().filter(|k| *k != "(root)").collect();
-            if scoped.len() == 1 {
-                return Ok(Some(scoped[0].clone()));
-            }
-            if scoped.len() > 1 {
-                let names: Vec<&str> = scoped.iter().map(|s| s.as_str()).collect();
-                return Err(format!("多个 scope 有变更: {:?}，请指定", names));
-            }
-            Ok(None)
-        }
+    let mut matched: Vec<String> = hits.into_keys().collect();
+    if !matched.is_empty() {
+        // 按被匹配的次数降序排列
+        matched.sort();
+        return Ok(matched);
     }
+
+    // 回退：从已有 tag 收集 scope
+    let all_tags = collect_tags_with_scope(repo);
+    let scoped: Vec<&String> = all_tags.keys().filter(|k| *k != "(root)").collect();
+    if !scoped.is_empty() {
+        return Ok(scoped.into_iter().cloned().collect());
+    }
+
+    // 最后回退：(root) — 让后续流程给出具体错误
+    Ok(vec!["(root)".into()])
 }
 
 /// 加载 contract.yaml 中的 scope 映射。
@@ -280,9 +497,7 @@ fn collect_tags_with_scope(repo: &git2::Repository) -> HashMap<String, Vec<Strin
         let (scope, ver_str) = parse_tag(tag);
         let scope_name = scope.unwrap_or_else(|| "(root)".to_string());
         if let Ok((major, minor, patch, _, pre_num)) = parse_version(ver_str) {
-            // pre_num: None → 正式版（排前面），Some(n) → 预发布（排后面）
             let pre_ord = pre_num.unwrap_or(0);
-            // 预发布阶段排序：alpha < beta < rc
             let stage_ord = if ver_str.contains("-alpha") {
                 1
             } else if ver_str.contains("-beta") {
@@ -290,9 +505,8 @@ fn collect_tags_with_scope(repo: &git2::Repository) -> HashMap<String, Vec<Strin
             } else if ver_str.contains("-rc") {
                 3
             } else {
-                0 // 正式版
+                0
             };
-            // 排序键：(major, minor, patch, stage_ord, pre_ord) 全部降序
             let ord = (major, minor, patch, stage_ord, pre_ord);
             groups
                 .entry(scope_name)
@@ -301,10 +515,9 @@ fn collect_tags_with_scope(repo: &git2::Repository) -> HashMap<String, Vec<Strin
         }
     }
 
-    // 每组内降序排列
     let mut result: HashMap<String, Vec<String>> = HashMap::new();
     for (scope, mut entries) in groups {
-        entries.sort_by(|a, b| b.0.cmp(&a.0)); // 降序
+        entries.sort_by(|a, b| b.0.cmp(&a.0));
         result.insert(scope, entries.into_iter().map(|(_, t)| t).collect());
     }
     result
@@ -397,8 +610,6 @@ mod tests {
 
     #[test]
     fn test_collect_tags_sorts_by_semver() {
-        use std::collections::HashMap;
-        // Mock 一个空的 repo，直接测 parse_version + 排序逻辑
         let tags = vec![
             "cli/v0.8.4",
             "cli/v0.9.0",
@@ -417,7 +628,6 @@ mod tests {
                     .push((tag.to_string(), ma, mi, pa));
             }
         }
-        // cli 组降序：0.10.0 > 0.9.0 > 0.9.0-rc.2 > 0.8.4 > 0.8.4-rc.1
         let mut cli = groups.remove("cli").unwrap();
         cli.sort_by(|a, b| (b.1, b.2, b.3).cmp(&(a.1, a.2, a.3)));
         let versions: Vec<&str> = cli.iter().map(|(t, _, _, _)| t.as_str()).collect();
@@ -431,5 +641,76 @@ mod tests {
                 "cli/v0.8.4-rc.1",
             ]
         );
+    }
+
+    #[test]
+    fn test_fallback_heuristic_feat() {
+        let commits = vec!["feat: add new command".into()];
+        let d = fallback_heuristic(&commits);
+        assert_eq!(d.action, "release");
+        assert_eq!(d.increment.as_deref(), Some("minor"));
+        assert_eq!(d.prerelease.as_deref(), Some("rc"));
+    }
+
+    #[test]
+    fn test_fallback_heuristic_fix() {
+        let commits = vec!["fix: resolve crash".into()];
+        let d = fallback_heuristic(&commits);
+        assert_eq!(d.action, "release");
+        assert_eq!(d.increment.as_deref(), Some("patch"));
+        assert!(d.prerelease.is_none());
+    }
+
+    #[test]
+    fn test_fallback_heuristic_skip() {
+        let commits = vec!["docs: update readme".into()];
+        let d = fallback_heuristic(&commits);
+        assert_eq!(d.action, "skip");
+    }
+
+    #[test]
+    fn test_fallback_heuristic_breaking() {
+        let commits = vec!["feat!: breaking change".into()];
+        let d = fallback_heuristic(&commits);
+        assert_eq!(d.action, "human");
+    }
+
+    #[test]
+    fn test_build_version_patch() {
+        let v = build_version(0, 8, 4, None, None, "patch", None);
+        assert_eq!(v, "v0.8.5");
+    }
+
+    #[test]
+    fn test_build_version_minor_rc() {
+        let v = build_version(0, 8, 4, None, None, "minor", Some("rc"));
+        assert_eq!(v, "v0.9.0-rc.1");
+    }
+
+    #[test]
+    fn test_build_version_prerelease_increment() {
+        let v = build_version(0, 9, 0, Some("rc"), Some(1), "patch", None);
+        assert_eq!(v, "v0.9.0-rc.2");
+    }
+
+    #[test]
+    fn test_build_version_minor_formal() {
+        let v = build_version(0, 8, 4, None, None, "minor", None);
+        assert_eq!(v, "v0.9.0");
+    }
+
+    #[test]
+    fn test_prefix_version_scoped() {
+        assert_eq!(prefix_version("cli", "v0.9.0"), "cli/v0.9.0");
+    }
+
+    #[test]
+    fn test_prefix_version_root() {
+        assert_eq!(prefix_version("(root)", "v0.9.0"), "v0.9.0");
+    }
+
+    #[test]
+    fn test_prefix_version_empty() {
+        assert_eq!(prefix_version("", "v0.9.0"), "v0.9.0");
     }
 }

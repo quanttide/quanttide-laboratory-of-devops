@@ -1,9 +1,0 @@
-工具|耗时|内存(MB)|覆盖率|状态
-llvm-cov_clean|0:01.70 real|366|30.6|✅
-llvm-cov_incr|0:01.81 real|367|30.6|✅
-tarpaulin_clean|Command exited with non-zero status 2|15|N/A|❌
-tarpaulin_incr|Command exited with non-zero status 2|15|N/A|❌
-grcov_clean|Command exited with non-zero status 127|442|N/A|✅
-grcov_incr|Command exited with non-zero status 127|49|N/A|✅
-builtin_clean|0:00.70 real|49|N/A|❌
-builtin_incr|0:01.14 real|49|N/A|❌

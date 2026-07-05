@@ -1,0 +1,52 @@
+warning: field `version` is never read
+  --> src/preflight.rs:13:9
+   |
+ 9 | pub struct PreflightResult {
+   |            --------------- field in this struct
+...
+13 |     pub version: String,
+   |         ^^^^^^^
+   |
+   = note: `PreflightResult` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `quanttide-lab` (bin "quanttide-lab" test) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running unittests src/bin/detect.rs (target/debug/deps/detect-b281d20963204d05)
+
+running 20 tests
+test tests::test_build_version_minor_formal ... ok
+test tests::test_build_version_minor_rc ... ok
+test tests::test_build_version_patch ... ok
+test tests::test_build_version_prerelease_increment ... ok
+test tests::test_collect_tags_sorts_by_semver ... ok
+test tests::test_fallback_heuristic_breaking ... ok
+test tests::test_fallback_heuristic_docs ... ok
+test tests::test_fallback_heuristic_feat ... ok
+test tests::test_fallback_heuristic_fix ... ok
+test tests::test_fallback_heuristic_skip ... ok
+test tests::test_parse_tag_root ... ok
+test tests::test_parse_tag_scoped ... ok
+test tests::test_parse_version_bad_format ... ok
+test tests::test_parse_version_beta ... ok
+test tests::test_parse_version_formal ... ok
+test tests::test_parse_version_prerelease ... ok
+test tests::test_parse_version_with_v_prefix ... ok
+test tests::test_prefix_version_empty ... ok
+test tests::test_prefix_version_root ... ok
+test tests::test_prefix_version_scoped ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/debug/deps/quanttide_lab-10aefe58f5817ceb)
+
+running 5 tests
+test preflight::tests::test_preflight_no_cargo_toml ... ok
+test release::tests::test_status_no_git_repo ... ok
+test release::tests::test_precheck_no_cargo_toml ... ok
+test release::tests::test_publish_empty_dir_as_prerelease ... ok
+test release::tests::test_publish_rejects_invalid_version ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.63s
+
+error: command failed: 'llvm-profdata': No such file or directory (os error 2)

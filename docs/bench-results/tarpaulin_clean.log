@@ -1,0 +1,7 @@
+error: unexpected argument '--lcov' found
+
+  tip: to pass '--lcov' as a value, use '-- --lcov'
+
+Usage: cargo tarpaulin [OPTIONS] [-- <ARGS>...]
+
+For more information, try '--help'.

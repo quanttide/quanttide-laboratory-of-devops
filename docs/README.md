@@ -5,25 +5,14 @@
 | 模块 | 说明 | 报告 | 状态 |
 |------|------|------|------|
 | `bin/detect` | 版本号自动检测 — 从 git 历史推断 scope/minor/patch/预发布 | [docs/detect.md](docs/detect.md) | 原型 |
-| `preflight` | 发布前检查 — 依次执行 build → test → dry-run | — | 原型 |
-| `release` | 发布流程编排 — 封装 precheck → publish → postcheck | — | 原型 |
 | `git-exp` | git2 vs gix API 与性能对比 | [报告](../../data/report/lab/git-exp.md) | 实验 |
 
-## preflight — 发布前检查
+已推进到平台（实验室不再维护副本）：
 
 ```bash
-cargo run --bin quanttide-lab
+# 统一状态查看（替代 preflight）
+qtcloud-devops status
+
+# 发布流程（替代 release）
+qtcloud-devops release publish -v <version> -y
 ```
-
-依次执行：
-1. `cargo check` — 语法校验
-2. `cargo test` — 运行测试
-3. `cargo metadata` — 发布 dry-run（代替 `cargo publish --dry-run`）
-
-## release — 发布流程编排
-
-```bash
-cargo run --bin quanttide-lab -- release <status|precheck|publish>
-```
-
-封装 `qtcloud_devops_cli::release` 的 precheck → publish → status 三步流程。

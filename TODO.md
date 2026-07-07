@@ -6,39 +6,39 @@
 >
 > 关联模拟场景：artifact 不一致（AGENTS.md）、跨仓库发布、网络分区。
 
-### P0 — Provider 基础框架
+### ✅ P0 — Provider 基础框架
 
-- [ ] 添加 Go module 依赖（`ghinstallation`、`go-github`、`chi`）
-- [ ] 定义核心数据结构：`ArtifactState`、`ScanResult`、`RepairAction`
-- [ ] 实现 GitHub API 客户端：使用 GitHub App 安装认证（`ghinstallation`）
-- [ ] 实现 scope 解析器：从 scope 列表映射到 GitHub 仓库路径
-- [ ] 实现 HTTP 端点：`GET /health`、`GET /scan/:scope`、`POST /repair/:scope`
-- [ ] 实现结构化日志（`slog`）与错误类型定义
-- [ ] 实现 graceful shutdown：信号处理 + 健康检查摘流
-- [ ] 编写单元测试：客户端 mock、scope 解析、端点路由
+- [x] 添加 Go module 依赖（`ghinstallation`、`go-github`、`chi`）
+- [x] 定义核心数据结构：`ArtifactState`、`ScanResult`、`RepairAction`
+- [x] 实现 GitHub API 客户端：使用 GitHub App 安装认证（`ghinstallation`）
+- [x] 实现 scope 解析器：从 scope 列表映射到 GitHub 仓库路径
+- [x] 实现 HTTP 端点：`GET /health`、`GET /scan/:scope`、`POST /repair/:scope`
+- [x] 实现结构化日志（`slog`）与错误类型定义
+- [x] 实现 graceful shutdown：信号处理 + 健康检查摘流
+- [x] 编写单元测试：客户端 mock、scope 解析、端点路由
 
-### P0 — Artifact 三角扫描
+### ✅ P0 — Artifact 三角扫描
 
-- [ ] 实现 Tag 扫描：`GET /repos/{owner}/{repo}/git/refs/tags`，按 scope 前缀过滤
-- [ ] 实现 CHANGELOG 扫描：读取远程仓库 CHANGELOG.md，按版本提取条目
-- [ ] 实现 Release 扫描：`GET /repos/{owner}/{repo}/releases`，按 tag 名匹配
-- [ ] 实现合并器：给定 scope，输出 `{HasTag, HasChangelog, HasRelease}` 三元组
-- [ ] 编写测试：模拟 8 种组合状态，验证扫描结果正确
+- [x] 实现 Tag 扫描：`GET /repos/{owner}/{repo}/git/refs/tags`，按 scope 前缀过滤
+- [x] 实现 CHANGELOG 扫描：读取远程仓库 CHANGELOG.md，按版本提取条目
+- [x] 实现 Release 扫描：`GET /repos/{owner}/{repo}/releases`，按 tag 名匹配
+- [x] 实现合并器：给定 scope，输出 `{HasTag, HasChangelog, HasRelease}` 三元组
+- [x] 编写测试：模拟 8 种组合状态，验证扫描结果正确
 
-### P0 — 状态判定引擎
+### ✅ P0 — 状态判定引擎
 
-- [ ] 实现判定表：8 种状态组合 → 判定（正常/缺 CHANGELOG/缺 Release/只有 tag/未发布）
-- [ ] 实现可修复性判断：缺 Release / 缺 CHANGELOG → 可自动修复；缺 tag → 标记搁置
-- [ ] 实现聚合统计：输入多 scope 扫描结果，输出统计摘要（正常/异常/搁置数量）
-- [ ] 编写测试：覆盖全部 8 种状态，验证判定和修复建议正确
+- [x] 实现判定表：8 种状态组合 → 判定（正常/缺 CHANGELOG/缺 Release/只有 tag/未发布）
+- [x] 实现可修复性判断：缺 Release / 缺 CHANGELOG → 可自动修复；缺 tag → 标记搁置
+- [x] 实现聚合统计：输入多 scope 扫描结果，输出统计摘要（正常/异常/搁置数量）
+- [x] 编写测试：覆盖全部 8 种状态，验证判定和修复建议正确
 
-### P0 — 反脆弱修复执行器
+### ✅ P0 — 反脆弱修复执行器
 
-- [ ] 缺 CHANGELOG 修复：从 tag~HEAD git log 生成 CHANGELOG 条目标记，PR 到仓库
-- [ ] 缺 Release 修复：`POST /repos/{owner}/{repo}/releases`，从已有 CHANGELOG 补
-- [ ] 缺 tag 标记搁置：写入搁置队列文件（`shelved.json`），记录 scope + version + 原因
-- [ ] 实现修复原子性：每个修复独立事务，失败不影响其他 scope
-- [ ] 编写测试：模拟各修复场景，验证修复动作和结果
+- [x] 缺 CHANGELOG 修复：从 tag~HEAD git log 生成 CHANGELOG 条目标记，PR 到仓库
+- [x] 缺 Release 修复：`POST /repos/{owner}/{repo}/releases`，从已有 CHANGELOG 补
+- [x] 缺 tag 标记搁置：写入搁置队列文件（`shelved.json`），记录 scope + version + 原因
+- [x] 实现修复原子性：每个修复独立事务，失败不影响其他 scope
+- [x] 编写测试：模拟各修复场景，验证修复动作和结果
 
 ### P1 — 批量扫描
 

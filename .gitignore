@@ -4,4 +4,5 @@ __pycache__
 .venv
 cli/target
 src/provider/target
+src/provider/provider
 src/cli/target

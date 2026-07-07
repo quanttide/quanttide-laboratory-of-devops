@@ -3,14 +3,18 @@
 ## v0.2.0 — Provider 服务端开发
 
 > 焦点 sprint。完成后 Provider 能扫描 Artifact 三角、发现不一致、按规则自动修复。
+>
+> 关联模拟场景：artifact 不一致（AGENTS.md）、跨仓库发布、网络分区。
 
 ### P0 — Provider 基础框架
 
-- [ ] 初始化 Go module 依赖（`ghinstallation`、`go-github`、`gin`/`chi`）
+- [ ] 添加 Go module 依赖（`ghinstallation`、`go-github`、`chi`）
 - [ ] 定义核心数据结构：`ArtifactState`、`ScanResult`、`RepairAction`
 - [ ] 实现 GitHub API 客户端：使用 GitHub App 安装认证（`ghinstallation`）
 - [ ] 实现 scope 解析器：从 scope 列表映射到 GitHub 仓库路径
-- [ ] 实现 HTTP 端点：`GET /scan/:scope`、`POST /repair/:scope`
+- [ ] 实现 HTTP 端点：`GET /health`、`GET /scan/:scope`、`POST /repair/:scope`
+- [ ] 实现结构化日志（`slog`）与错误类型定义
+- [ ] 实现 graceful shutdown：信号处理 + 健康检查摘流
 - [ ] 编写单元测试：客户端 mock、scope 解析、端点路由
 
 ### P0 — Artifact 三角扫描
@@ -36,7 +40,7 @@
 - [ ] 实现修复原子性：每个修复独立事务，失败不影响其他 scope
 - [ ] 编写测试：模拟各修复场景，验证修复动作和结果
 
-### P0 — 批量扫描
+### P1 — 批量扫描
 
 - [ ] 实现多 scope 并发扫描：goroutine 池，可配置并发数
 - [ ] 实现扫描报告输出：JSON 格式，含每个 scope 的状态 + 整体统计
@@ -45,23 +49,20 @@
 
 ### P0 — 集成测试
 
-- [ ] 场景 1：缺 Release → 自动创建 Release
-- [ ] 场景 2：缺 CHANGELOG → 从 git log 补写
-- [ ] 场景 3：只有 tag（缺 CHANGELOG + Release）→ 修复 CHANGELOG + Release
-- [ ] 场景 4：多个 scope 混合状态 → 批量扫描 + 批量修复
-- [ ] 场景 5：缺 tag → 标记搁置，不自动修复
+- [ ] 场景 1（artifact 不一致）：缺 Release → 自动创建 Release
+- [ ] 场景 2（artifact 不一致）：缺 CHANGELOG → 从 git log 补写
+- [ ] 场景 3（artifact 不一致）：只有 tag（缺 CHANGELOG + Release）→ 修复 CHANGELOG + Release
+- [ ] 场景 4（高并发扫描）：多个 scope 混合状态 → 批量扫描 + 批量修复
+- [ ] 场景 5（网络分区）：缺 tag → 标记搁置，不自动修复
 
 ---
 
-## 次要（当前 sprint 不优先）
+## CLI 侧工作（另行跟踪）
 
-### Changed — CLI 增强
+以下为 CLI 侧工作项，不属于 Provider sprint 范围，移至 `plan TODO` 跟踪：
 
-- [ ] `plan audit` 支持 scope：穿透子模块审计规划文件
-- [ ] ROADMAP 状态自动同步：TODO [x] → ROADMAP [x]
-- [ ] 统一问题收集入口：build/test/release 的发现集中写入规划文件
-- [ ] Audit 从"存在检查"升级为"一致性检查"
-
-### Fixed
-
-- [ ] `determine_submodule_status` 长参数重构不完整
+- `plan audit` 支持 scope：穿透子模块审计规划文件
+- ROADMAP 状态自动同步：TODO [x] → ROADMAP [x]
+- 统一问题收集入口：build/test/release 的发现集中写入规划文件
+- Audit 从"存在检查"升级为"一致性检查"
+- `determine_submodule_status` 长参数重构不完整

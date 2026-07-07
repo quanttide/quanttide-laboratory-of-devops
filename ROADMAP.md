@@ -1,26 +1,23 @@
 # ROADMAP
 
-## [0.3.0] — 规划中
+## [0.3.0] — 进行中
 
 > 焦点：Provider 自治化 — 后台收敛循环 + 因果约束 + 全 scope 治理
 
 ### Added — 后台自动收敛
 
-- [ ] 后台收敛循环：定时器驱动，固定频率扫描全部 scope
-- [ ] scope 发现：从配置文件或 packages/ 目录自动发现 scope 列表
-- [ ] 自动修复管道：扫描 → 判定 → 修复全程自动化，无需人工触发
-- [ ] 收敛状态报告：每次循环输出"已正常/已修复/已搁置/新增异常"四象限
-- [ ] 可配置频率与 scope 白名单/黑名单
+- [x] 后台收敛循环：定时器驱动，固定频率扫描全部 scope
+- [ ] scope 发现：从配置文件或 packages/ 目录自动发现 scope 列表（当前硬编码）
+- [x] 自动修复管道：扫描 → 判定 → 修复全程自动化，无需人工触发
+- [x] 收敛状态报告：每次循环输出正常/已修/搁置/因果断裂四象限
+- [x] 可配置频率（`CONVERGE_INTERVAL` 环境变量）
 
 ### Added — 因果约束模型
 
-- [ ] 版本号一致性校验：Tag/CHANGELOG/Release 三者版本号交叉验证
-- [ ] 因果链完整性检查：禁止出现 `{HasCL=true, HasTag=false, HasRelease=true}` 等矛盾态
-- [ ] 事实源层级感知：
-  - Tag 不可修复（事实源）→ 标记搁置
-  - CHANGELOG 谨慎修复（规范事实源）→ 生成 PR 而非直接写
-  - Release 安全重建（派生制品）→ 直接 API 创建
-- [ ] 矛盾态修复策略：违反因果链的 scope 标记人工介入
+- [x] 版本号一致性校验：Tag/CHANGELOG/Release 三者版本号交叉验证
+- [x] 因果链完整性检查：禁止出现 `{HasCL=true, HasTag=false, HasRelease=true}` 等矛盾态
+- [x] 事实源层级感知：Tag（不可移动）/ CHANGELOG（规范事实源/PR）/ Release（派生制品/直接 API）
+- [x] 矛盾态修复策略：违反因果链的 scope 标记 `causal_break` 人工介入
 
 ### Added — 正式版 CHANGELOG 汇总
 
@@ -31,9 +28,9 @@
 
 ### Added — 全 scope 治理
 
-- [ ] `GET /scan`（无 scope 参数）：扫描全部 scope，返回聚合报告
-- [ ] `GET /report`：返回最近一次全扫描的持久化报告
-- [ ] 全 scope 扫描结果缓存：避免每次请求都触发全量扫描
+- [x] `GET /scan`（无 scope 参数）：扫描全部 scope，返回聚合报告
+- [x] `GET /report`：返回最近一次全扫描的持久化报告
+- [x] 全 scope 扫描结果缓存（`lastReport` 内存缓存）
 
 ## [0.2.0] — 已发布
 

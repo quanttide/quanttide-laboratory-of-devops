@@ -17,7 +17,9 @@ func main() {
 
 	gh := &GitHubClient{}
 
-	h := NewHandler(gh, store, logger)
+	scopes := discoverScopes()
+
+	h := NewHandler(gh, store, logger, scopes)
 	r := Routes(h)
 
 	srv := &http.Server{
@@ -36,6 +38,18 @@ func main() {
 		}
 	}()
 
+	interval := 5 * time.Minute
+	if v := os.Getenv("CONVERGE_INTERVAL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			interval = d
+		}
+	}
+	logger.Info("convergence loop", "interval", interval)
+
+	go func() {
+		runConverge(ctx, h, logger, interval)
+	}()
+
 	<-ctx.Done()
 	logger.Info("shutting down")
 
@@ -47,4 +61,36 @@ func main() {
 		os.Exit(1)
 	}
 	logger.Info("server stopped")
+}
+
+func runConverge(ctx context.Context, h *handler, logger *slog.Logger, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			logger.Info("convergence cycle starting")
+			report := h.convergeAndRepair(ctx)
+			logger.Info("convergence cycle done",
+				"total", report.Total,
+				"normal", report.Normal,
+				"fixed", report.Fixed,
+				"shelved", report.Shelved,
+				"causal_breaks", report.CausalBreaks,
+			)
+		}
+	}
+}
+
+func discoverScopes() []Scope {
+	return []Scope{
+		"quanttide/qtcloud-devops",
+		"quanttide/quanttide-devops-toolkit",
+		"quanttide/qtcloud-code",
+		"quanttide/qtadmin",
+		"quanttide/quanttide-website",
+	}
 }

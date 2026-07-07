@@ -3,8 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 )
+
+var versionRE = regexp.MustCompile(`v?\d+\.\d+\.\d+`)
 
 type Scanner struct {
 	gh *GitHubClient
@@ -20,11 +23,13 @@ func (s *Scanner) ScanScope(ctx context.Context, scope Scope) (*ScanResult, erro
 		return nil, err
 	}
 
-	state, _, err := s.scanArtifacts(ctx, m.Owner, m.Repo)
+	state, err := s.scanArtifacts(ctx, m.Owner, m.Repo)
 	if err != nil {
 		return nil, fmt.Errorf("scan %s: %w", scope, err)
 	}
 	state.Scope = scope
+	state.TagCLMatch = state.HasTag && state.HasChangelog && matchVersion(state.TagVersion, state.ChangelogVersion)
+	state.TagRelMatch = state.HasTag && state.HasRelease && matchVersion(state.TagVersion, state.ReleaseVersion)
 
 	judge := Judge(*state)
 	return &ScanResult{
@@ -36,30 +41,52 @@ func (s *Scanner) ScanScope(ctx context.Context, scope Scope) (*ScanResult, erro
 	}, nil
 }
 
-func (s *Scanner) scanArtifacts(ctx context.Context, owner, repo string) (*ArtifactState, string, error) {
+func (s *Scanner) scanArtifacts(ctx context.Context, owner, repo string) (*ArtifactState, error) {
 	state := &ArtifactState{Owner: owner, Repo: repo}
 
 	tags, err := s.gh.ListTags(ctx, owner, repo)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	if len(tags) > 0 {
 		state.HasTag = true
-		state.Version = strings.TrimPrefix(tags[0].GetRef(), "refs/tags/")
+		state.TagVersion = extractVersion(tags[0].GetRef())
 	}
 
 	changelog, err := s.gh.GetChangelog(ctx, owner, repo)
-	state.HasChangelog = err == nil && strings.Contains(changelog, state.Version)
-
-	releases, err := s.gh.ListReleases(ctx, owner, repo)
-	if err == nil {
-		for _, rel := range releases {
-			if rel.GetTagName() == state.Version {
-				state.HasRelease = true
-				break
-			}
-		}
+	if err == nil && changelog != "" {
+		state.HasChangelog = true
+		state.ChangelogVersion = extractFirstVersion(changelog)
 	}
 
-	return state, state.Version, nil
+	releases, err := s.gh.ListReleases(ctx, owner, repo)
+	if err == nil && len(releases) > 0 {
+		state.HasRelease = true
+		state.ReleaseVersion = extractVersion(releases[0].GetTagName())
+	}
+
+	return state, nil
+}
+
+func extractVersion(ref string) string {
+	v := versionRE.FindString(ref)
+	if v != "" && v[0] != 'v' {
+		return "v" + v
+	}
+	return v
+}
+
+func extractFirstVersion(content string) string {
+	v := versionRE.FindString(content)
+	if v != "" && v[0] != 'v' {
+		return "v" + v
+	}
+	return v
+}
+
+func matchVersion(a, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+	return strings.TrimPrefix(a, "v") == strings.TrimPrefix(b, "v")
 }

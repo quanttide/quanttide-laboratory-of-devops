@@ -15,7 +15,7 @@ func TestHealth(t *testing.T) {
 	store := NewShelvedStore(os.TempDir() + "/test_shelved.json")
 	defer os.Remove(os.TempDir() + "/test_shelved.json")
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-	h := NewHandler(gh, store, logger)
+	h := NewHandler(gh, store, logger, nil)
 
 	req := httptest.NewRequest("GET", "/health", nil)
 	w := httptest.NewRecorder()
@@ -64,20 +64,22 @@ func TestJudge(t *testing.T) {
 		state ArtifactState
 		want  Status
 	}{
-		{ArtifactState{HasTag: true, HasChangelog: true, HasRelease: true}, StatusNormal},
-		{ArtifactState{HasTag: true, HasChangelog: false, HasRelease: true}, StatusMissingCL},
-		{ArtifactState{HasTag: true, HasChangelog: true, HasRelease: false}, StatusMissingRel},
+		{ArtifactState{HasTag: true, HasChangelog: true, HasRelease: true, TagCLMatch: true, TagRelMatch: true}, StatusNormal},
+		{ArtifactState{HasTag: true, HasChangelog: false, HasRelease: true, TagRelMatch: true}, StatusMissingCL},
+		{ArtifactState{HasTag: true, HasChangelog: true, HasRelease: false, TagCLMatch: true}, StatusMissingRel},
 		{ArtifactState{HasTag: true, HasChangelog: false, HasRelease: false}, StatusOnlyTag},
 		{ArtifactState{HasTag: false, HasChangelog: false, HasRelease: false}, StatusUnreleased},
-		{ArtifactState{HasTag: false, HasChangelog: true, HasRelease: true}, StatusUnreleased},
-		{ArtifactState{HasTag: false, HasChangelog: true, HasRelease: false}, StatusUnreleased},
-		{ArtifactState{HasTag: false, HasChangelog: false, HasRelease: true}, StatusUnreleased},
+		{ArtifactState{HasTag: false, HasChangelog: true, HasRelease: true}, StatusCausalBreak},
+		{ArtifactState{HasTag: false, HasChangelog: true, HasRelease: false}, StatusCausalBreak},
+		{ArtifactState{HasTag: false, HasChangelog: false, HasRelease: true}, StatusCausalBreak},
+		{ArtifactState{HasTag: true, HasChangelog: true, HasRelease: true, TagCLMatch: false, TagRelMatch: true}, StatusCausalBreak},
+		{ArtifactState{HasTag: true, HasChangelog: true, HasRelease: true, TagCLMatch: true, TagRelMatch: false}, StatusCausalBreak},
 	}
 
 	for _, tt := range tests {
 		result := Judge(tt.state)
 		if result.Status != tt.want {
-			t.Errorf("Judge(%+v) = %s, want %s", tt.state, result.Status, tt.want)
+			t.Errorf("Judge(%+v).Status = %s, want %s (summary: %s)", tt.state, result.Status, tt.want, result.Summary)
 		}
 	}
 }
@@ -89,9 +91,10 @@ func TestAggregate(t *testing.T) {
 		{Status: StatusMissingRel},
 		{Status: StatusOnlyTag},
 		{Status: StatusUnreleased},
+		{Status: StatusCausalBreak},
 	}
 	stats := Aggregate(results)
-	if stats.Total != 5 || stats.Normal != 1 || stats.Abnormal != 3 || stats.Shelved != 1 {
+	if stats.Total != 6 || stats.Normal != 1 || stats.Abnormal != 4 || stats.Shelved != 1 || stats.CausalBreaks != 1 {
 		t.Errorf("Aggregate = %+v", stats)
 	}
 }

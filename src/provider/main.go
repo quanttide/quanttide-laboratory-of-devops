@@ -15,7 +15,16 @@ func main() {
 
 	store := NewShelvedStore("shelved.json")
 
-	gh := &GitHubClient{}
+	token := os.Getenv("GITHUB_TOKEN")
+	if token == "" {
+		logger.Error("GITHUB_TOKEN is required")
+		os.Exit(1)
+	}
+	gh, err := NewGitHubClientWithTransport(&authTransport{token: token})
+	if err != nil {
+		logger.Error("failed to create github client", "error", err)
+		os.Exit(1)
+	}
 
 	scopes := discoverScopes()
 
@@ -93,4 +102,14 @@ func discoverScopes() []Scope {
 		"quanttide/qtadmin",
 		"quanttide/quanttide-website",
 	}
+}
+
+type authTransport struct {
+	token string
+}
+
+func (t *authTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	req = req.Clone(req.Context())
+	req.Header.Set("Authorization", "Bearer "+t.token)
+	return http.DefaultTransport.RoundTrip(req)
 }

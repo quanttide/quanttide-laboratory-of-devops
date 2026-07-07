@@ -24,8 +24,8 @@ func Routes(h *handler) http.Handler {
 	r := chi.NewRouter()
 	r.Get("/health", h.Health)
 	r.Get("/scan", h.ScanAll)
-	r.Get("/scan/{scope}", h.Scan)
-	r.Post("/repair/{scope}", h.Repair)
+	r.Get("/scan/*", h.Scan)
+	r.Post("/repair/*", h.Repair)
 	r.Get("/report", h.Report)
 	return r
 }
@@ -40,7 +40,7 @@ func (h *handler) Health(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) Scan(w http.ResponseWriter, r *http.Request) {
-	scope := Scope(chi.URLParam(r, "scope"))
+	scope := Scope(chi.URLParam(r, "*"))
 	if scope.IsZero() {
 		http.Error(w, `{"error":"missing scope"}`, http.StatusBadRequest)
 		return
@@ -96,7 +96,7 @@ func (h *handler) Report(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) Repair(w http.ResponseWriter, r *http.Request) {
-	scope := Scope(chi.URLParam(r, "scope"))
+	scope := Scope(chi.URLParam(r, "*"))
 	if scope.IsZero() {
 		http.Error(w, `{"error":"missing scope"}`, http.StatusBadRequest)
 		return

@@ -1,4 +1,12 @@
 [project]
 name = "quanttide-lab"
+version = "0.1.0"
+description = "量潮DevOps实验室 — CLI/Provider/集成测试原型验证场"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "pytest>=8",
+]
+
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"

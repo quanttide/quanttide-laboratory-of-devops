@@ -7,6 +7,7 @@
 - AGENTS.md：双线开发结构（Python 测试编排 + Go provider + Rust CLI）
 - provider 原型（Go / src/main.go）
 - 集成测试目录（Python / tests/）
+- pyproject.toml：补充版本号、描述、构建系统配置
 
 ### Changed
 - 从单包 Rust 项目重构为三线结构

@@ -24,6 +24,6 @@ cd cli && cargo run
 # Provider 原型
 cd src && go run main.go
 
-# 集成测试
+# 集成测试（使用 uv）
 uv run pytest
 ```

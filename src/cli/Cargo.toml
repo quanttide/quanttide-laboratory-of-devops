@@ -6,6 +6,8 @@ edition = "2021"
 [dependencies]
 git2 = "0.19"
 gix = "0.69"
+qtcloud-devops-cli = "0.10.0"
+quanttide-devops = "0.3.0"
 serde = { version = "1", features = ["derive"] }
 serde_yaml = "0.9"
 

@@ -10,13 +10,14 @@
 examples/default/
 ├── pyproject.toml    # Python — 测试编排、集成测试
 ├── tests/            # pytest 集成测试
-├── src/              # Go — 服务端/provider 原型
-│   ├── go.mod
-│   └── main.go
 ├── packages/         # 共享库原型（验证后迁移至 toolkit）
-└── cli/              # Rust — CLI 原型
-    ├── Cargo.toml
-    └── src/
+├── src/
+│   ├── cli/          # Rust — CLI 原型
+│   │   ├── Cargo.toml
+│   │   └── src/
+│   └── provider/     # Go — 服务端/provider 原型
+│       ├── go.mod
+│       └── main.go
 ```
 
 ## 生产映射
@@ -25,8 +26,8 @@ examples/default/
 
 | 实验室路径 | 对应产品仓库 | 说明 |
 |-----------|-------------|------|
-| `cli/` | `apps/qtcloud-devops/src/cli/` | CLI 原型，验证后直接迁移 |
-| `src/`（Go） | 待定（未来 provider 服务） | 服务端能力验证，技术选型确认后确定仓库 |
+| `src/cli/` | `apps/qtcloud-devops/src/cli/` | CLI 原型，验证后直接迁移 |
+| `src/provider/`（Go） | 待定（未来 provider 服务） | 服务端能力验证，技术选型确认后确定仓库 |
 | `tests/`（Python） | 无对应产品仓库 | 集成测试编排层，仅实验室存在 |
 | `packages/` | `packages/quanttide-devops-toolkit/` | 共享库原型，验证后迁移至 toolkit
 

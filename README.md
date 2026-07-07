@@ -19,10 +19,10 @@
 
 ```bash
 # CLI 原型
-cd cli && cargo run
+cd src/cli && cargo run
 
 # Provider 原型
-cd src && go run main.go
+cd src/provider && go run main.go
 
 # 集成测试（使用 uv）
 uv run pytest

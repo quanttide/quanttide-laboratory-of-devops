@@ -1,32 +1,33 @@
 {
-  "scanned_at": "2026-07-07T11:10:49Z",
+  "scanned_at": "2026-07-07T19:23:56Z",
   "provider_version": "v0.3.0",
+  "fix": "scope-aware filtering: tag/release filtered by component prefix",
   "total_scopes": 5,
   "results": [
     {
-      "scope": "quanttide/qtcloud-devops",
+      "scope": "quanttide/qtcloud-devops/cli",
       "repo": "github.com/quanttide/qtcloud-devops",
       "status": "causal_break",
-      "summary": "CHANGELOG 和 Release 均与 tag 不匹配",
+      "summary": "tag(v0.10.0)=rel(v0.10.0) 匹配，CL(v0.1.0) 不匹配",
       "repairable": false,
       "artifacts": {
-        "tag_version": "v0.0.1",
-        "changelog_version": "v0.8.3",
+        "tag_version": "v0.10.0",
+        "changelog_version": "v0.1.0",
         "release_version": "v0.10.0",
         "tag_cl_match": false,
-        "tag_rel_match": false
+        "tag_rel_match": true
       }
     },
     {
       "scope": "quanttide/quanttide-devops-toolkit",
       "repo": "github.com/quanttide/quanttide-devops-toolkit",
-      "status": "missing_changelog",
-      "summary": "缺 CHANGELOG",
-      "repairable": true,
+      "status": "causal_break",
+      "summary": "有 Release(v0.1.0) 但无 tag（派生制品悬空）",
+      "repairable": false,
       "artifacts": {
-        "tag_version": "v0.1.0",
+        "tag_version": "",
         "changelog_version": "",
-        "release_version": "v0.3.0",
+        "release_version": "v0.1.0",
         "tag_cl_match": false,
         "tag_rel_match": false
       }
@@ -35,7 +36,7 @@
       "scope": "quanttide/qtcloud-code",
       "repo": "github.com/quanttide/qtcloud-code",
       "status": "missing_changelog",
-      "summary": "缺 CHANGELOG",
+      "summary": "tag(v0.1.0)=rel(v0.1.0) 匹配，缺 CHANGELOG",
       "repairable": true,
       "artifacts": {
         "tag_version": "v0.1.0",
@@ -49,14 +50,14 @@
       "scope": "quanttide/qtadmin",
       "repo": "github.com/quanttide/qtadmin",
       "status": "causal_break",
-      "summary": "CHANGELOG 和 Release 均与 tag 不匹配",
+      "summary": "tag(v0.1.1)=rel(v0.1.1) 匹配，CL(v1.0.0) 不匹配",
       "repairable": false,
       "artifacts": {
-        "tag_version": "v0.0.1",
+        "tag_version": "v0.1.1",
         "changelog_version": "v1.0.0",
-        "release_version": "v0.0.17",
+        "release_version": "v0.1.1",
         "tag_cl_match": false,
-        "tag_rel_match": false
+        "tag_rel_match": true
       }
     },
     {

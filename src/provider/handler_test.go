@@ -38,12 +38,13 @@ func TestScopeParser(t *testing.T) {
 		input   Scope
 		owner   string
 		repo    string
+		name    string
 		wantErr bool
 	}{
-		{Scope("owner/repo"), "owner", "repo", false},
-		{Scope(""), "", "", true},
-		{Scope("norepo"), "", "", true},
-		{Scope("a/b/c"), "a", "b/c", false},
+		{Scope("owner/repo"), "owner", "repo", "", false},
+		{Scope(""), "", "", "", true},
+		{Scope("norepo"), "", "", "", true},
+		{Scope("a/b/c"), "a", "b", "c", false},
 	}
 
 	for _, tt := range tests {
@@ -52,8 +53,8 @@ func TestScopeParser(t *testing.T) {
 			t.Errorf("ParseScope(%q) error = %v, wantErr = %v", tt.input, err, tt.wantErr)
 		}
 		if err == nil {
-			if m.Owner != tt.owner || m.Repo != tt.repo {
-				t.Errorf("ParseScope(%q) = %+v, want owner=%q repo=%q", tt.input, m, tt.owner, tt.repo)
+			if m.Owner != tt.owner || m.Repo != tt.repo || m.Name != tt.name {
+				t.Errorf("ParseScope(%q) = %+v, want owner=%q repo=%q name=%q", tt.input, m, tt.owner, tt.repo, tt.name)
 			}
 		}
 	}
@@ -64,16 +65,16 @@ func TestJudge(t *testing.T) {
 		state ArtifactState
 		want  Status
 	}{
-		{ArtifactState{HasTag: true, HasChangelog: true, HasRelease: true, TagCLMatch: true, TagRelMatch: true}, StatusNormal},
+		{ArtifactState{HasTag: true, HasChangelog: true, HasRelease: true, TagCLCmp: CmpEqual, TagRelMatch: true}, StatusNormal},
+		{ArtifactState{HasTag: true, HasChangelog: true, HasRelease: true, TagCLCmp: CmpLess, TagRelMatch: true}, StatusPendingRel},
+		{ArtifactState{HasTag: true, HasChangelog: true, HasRelease: true, TagCLCmp: CmpGreater, TagRelMatch: true}, StatusCausalBreak},
 		{ArtifactState{HasTag: true, HasChangelog: false, HasRelease: true, TagRelMatch: true}, StatusMissingCL},
-		{ArtifactState{HasTag: true, HasChangelog: true, HasRelease: false, TagCLMatch: true}, StatusMissingRel},
+		{ArtifactState{HasTag: true, HasChangelog: true, HasRelease: false, TagCLCmp: CmpEqual}, StatusMissingRel},
 		{ArtifactState{HasTag: true, HasChangelog: false, HasRelease: false}, StatusOnlyTag},
 		{ArtifactState{HasTag: false, HasChangelog: false, HasRelease: false}, StatusUnreleased},
 		{ArtifactState{HasTag: false, HasChangelog: true, HasRelease: true}, StatusCausalBreak},
 		{ArtifactState{HasTag: false, HasChangelog: true, HasRelease: false}, StatusCausalBreak},
 		{ArtifactState{HasTag: false, HasChangelog: false, HasRelease: true}, StatusCausalBreak},
-		{ArtifactState{HasTag: true, HasChangelog: true, HasRelease: true, TagCLMatch: false, TagRelMatch: true}, StatusCausalBreak},
-		{ArtifactState{HasTag: true, HasChangelog: true, HasRelease: true, TagCLMatch: true, TagRelMatch: false}, StatusCausalBreak},
 	}
 
 	for _, tt := range tests {
@@ -92,9 +93,10 @@ func TestAggregate(t *testing.T) {
 		{Status: StatusOnlyTag},
 		{Status: StatusUnreleased},
 		{Status: StatusCausalBreak},
+		{Status: StatusPendingRel},
 	}
 	stats := Aggregate(results)
-	if stats.Total != 6 || stats.Normal != 1 || stats.Abnormal != 4 || stats.Shelved != 1 || stats.CausalBreaks != 1 {
+	if stats.Total != 7 || stats.Normal != 1 || stats.Abnormal != 5 || stats.Shelved != 1 || stats.CausalBreaks != 1 || stats.PendingRel != 1 {
 		t.Errorf("Aggregate = %+v", stats)
 	}
 }

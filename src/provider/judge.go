@@ -4,44 +4,58 @@ type JudgeResult struct {
 	Status     Status
 	Summary    string
 	Repairable bool
-	// FactSource indicates the hierarchy level for repair caution:
-	// "tag" (不可移动), "changelog" (规范事实源), "release" (派生制品)
 	FactSource string
 }
 
-var verdictTable = []struct {
-	HasTag, HasCL, HasRel   bool
-	TagCLMatch, TagRelMatch bool
-	Status                  Status
-	Summary                 string
-	Repairable              bool
-	FactSource              string
-}{
-	{true, true, true, true, true, StatusNormal, "artifact 完整，版本一致", false, ""},
-	{true, true, true, true, false, StatusCausalBreak, "因果断裂：Release tag 不匹配已有 tag", false, "release"},
-	{true, true, true, false, true, StatusCausalBreak, "因果断裂：CHANGELOG 版本与 tag 不匹配", false, "changelog"},
-	{true, true, true, false, false, StatusCausalBreak, "因果断裂：CHANGELOG 和 Release 均与 tag 不匹配", false, "manual"},
+type verdictRow struct {
+	HasTag, HasCL, HasRel  bool
+	CLCmp                  CmpResult // only checked when both tag and CL exist
+	TagRelMatch            bool
+	Status                 Status
+	Summary                string
+	Repairable             bool
+	FactSource             string
+}
 
-	{true, false, true, false, true, StatusMissingCL, "缺 CHANGELOG", true, "changelog"},
-	{true, false, true, false, false, StatusCausalBreak, "因果断裂：Release tag 不匹配且缺 CHANGELOG", false, "manual"},
+var verdictTable = []verdictRow{
+	// ── 三者完整 ──────────────────────────────────────────────────
+	{true, true, true, CmpEqual, true, StatusNormal, "artifact 完整，版本一致", false, ""},
+	{true, true, true, CmpLess, true, StatusPendingRel, "CL 超前 tag，待发版", true, "tag"},
+	{true, true, true, CmpGreater, true, StatusCausalBreak, "CHANGELOG 落后于 tag", false, "changelog"},
+	{true, true, true, CmpEqual, false, StatusCausalBreak, "Release tag 不匹配已有 tag", false, "release"},
+	{true, true, true, CmpLess, false, StatusPendingRel, "CL 超前，Release tag 不匹配", true, "tag"},
+	{true, true, true, CmpGreater, false, StatusCausalBreak, "CHANGELOG 落后，Release 也不匹配", false, "manual"},
 
-	{true, true, false, true, false, StatusMissingRel, "缺 Release", true, "release"},
-	{true, true, false, false, false, StatusCausalBreak, "因果断裂：CHANGELOG 版本与 tag 不匹配且缺 Release", false, "changelog"},
+	// ── 缺 CHANGELOG ──────────────────────────────────────────────
+	{true, false, true, CmpEqual, true, StatusMissingCL, "缺 CHANGELOG", true, "changelog"},
+	{true, false, true, CmpEqual, false, StatusCausalBreak, "缺 CHANGELOG 且 Release tag 不匹配", false, "manual"},
 
-	{true, false, false, false, false, StatusOnlyTag, "只有 tag，缺 CHANGELOG 和 Release", true, "tag"},
+	// ── 缺 Release ───────────────────────────────────────────────
+	{true, true, false, CmpEqual, false, StatusMissingRel, "缺 Release", true, "release"},
+	{true, true, false, CmpLess, false, StatusPendingRel, "CL 超前，缺 Release", true, "tag"},
+	{true, true, false, CmpGreater, false, StatusCausalBreak, "CHANGELOG 落后于 tag，缺 Release", false, "manual"},
 
-	{false, false, false, false, false, StatusUnreleased, "未发布", false, ""},
-	{false, true, true, false, false, StatusCausalBreak, "因果断裂：有 CHANGELOG 和 Release 但无 tag", false, "manual"},
-	{false, true, false, false, false, StatusCausalBreak, "因果断裂：有 CHANGELOG 但无 tag （规范事实源悬空）", false, "manual"},
-	{false, false, true, false, false, StatusCausalBreak, "因果断裂：有 Release 但无 tag （派生制品悬空）", false, "manual"},
+	// ── 只有 tag ──────────────────────────────────────────────────
+	{true, false, false, CmpEqual, false, StatusOnlyTag, "只有 tag，缺 CHANGELOG 和 Release", true, "tag"},
+
+	// ── 无 tag ────────────────────────────────────────────────────
+	{false, false, false, CmpEqual, false, StatusUnreleased, "未发布", false, ""},
+	{false, true, true, CmpEqual, false, StatusCausalBreak, "有 CHANGELOG 和 Release 但无 tag（因果矛盾）", false, "manual"},
+	{false, true, false, CmpEqual, false, StatusCausalBreak, "有 CHANGELOG 但无 tag（规范事实源悬空）", false, "manual"},
+	{false, false, true, CmpEqual, false, StatusCausalBreak, "有 Release 但无 tag（派生制品悬空）", false, "manual"},
 }
 
 func Judge(state ArtifactState) JudgeResult {
+	cmp := state.TagCLCmp
+	if !state.HasTag || !state.HasChangelog {
+		cmp = CmpEqual // no comparison possible
+	}
+
 	for _, v := range verdictTable {
 		if v.HasTag == state.HasTag &&
 			v.HasCL == state.HasChangelog &&
 			v.HasRel == state.HasRelease &&
-			v.TagCLMatch == state.TagCLMatch &&
+			v.CLCmp == cmp &&
 			v.TagRelMatch == state.TagRelMatch {
 			return JudgeResult{
 				Status:     v.Status,
@@ -60,6 +74,7 @@ type Stats struct {
 	Abnormal     int `json:"abnormal"`
 	Shelved      int `json:"shelved"`
 	CausalBreaks int `json:"causal_breaks"`
+	PendingRel   int `json:"pending_release"`
 }
 
 func Aggregate(results []ScanResult) Stats {
@@ -72,6 +87,9 @@ func Aggregate(results []ScanResult) Stats {
 			s.Shelved++
 		case StatusCausalBreak:
 			s.CausalBreaks++
+			s.Abnormal++
+		case StatusPendingRel:
+			s.PendingRel++
 			s.Abnormal++
 		default:
 			s.Abnormal++

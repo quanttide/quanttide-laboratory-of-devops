@@ -32,8 +32,26 @@ func (c *GitHubClient) ListTags(ctx context.Context, owner, repo string) ([]*git
 	return refs, err
 }
 
+func (c *GitHubClient) ListDir(ctx context.Context, owner, repo, dir string) ([]string, error) {
+	_, entries, _, err := c.client.Repositories.GetContents(ctx, owner, repo, dir, &github.RepositoryContentGetOptions{})
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, e := range entries {
+		if e.GetType() == "dir" {
+			names = append(names, e.GetName())
+		}
+	}
+	return names, nil
+}
+
 func (c *GitHubClient) GetChangelog(ctx context.Context, owner, repo string) (string, error) {
-	content, _, _, err := c.client.Repositories.GetContents(ctx, owner, repo, "CHANGELOG.md", &github.RepositoryContentGetOptions{})
+	return c.GetFile(ctx, owner, repo, "CHANGELOG.md")
+}
+
+func (c *GitHubClient) GetFile(ctx context.Context, owner, repo, path string) (string, error) {
+	content, _, _, err := c.client.Repositories.GetContents(ctx, owner, repo, path, &github.RepositoryContentGetOptions{})
 	if err != nil {
 		return "", err
 	}
@@ -66,5 +84,3 @@ func (c *GitHubClient) CreatePR(ctx context.Context, owner, repo, title, body, h
 	})
 	return err
 }
-
-

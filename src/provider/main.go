@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -26,10 +27,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	scopes := discoverScopes()
+	scopes := discoverScopes(gh)
 
 	h := NewHandler(gh, store, logger, scopes)
-	r := Routes(h)
+r := Routes(h)
 
 	srv := &http.Server{
 		Addr:    ":8080",
@@ -94,14 +95,65 @@ func runConverge(ctx context.Context, h *handler, logger *slog.Logger, interval 
 	}
 }
 
-func discoverScopes() []Scope {
-	return []Scope{
-		"quanttide/qtcloud-devops",
-		"quanttide/quanttide-devops-toolkit",
-		"quanttide/qtcloud-code",
-		"quanttide/qtadmin",
-		"quanttide/quanttide-website",
+func discoverScopes(gh *GitHubClient) []ScopeMapping {
+	repos := []struct{ owner, repo string }{
+		{"quanttide", "qtcloud-devops"},
+		{"quanttide", "quanttide-devops-toolkit"},
+		{"quanttide", "qtcloud-code"},
+		{"quanttide", "qtadmin"},
 	}
+	ctx := context.Background()
+	var scopes []ScopeMapping
+
+	for _, r := range repos {
+		tags, err := gh.ListTags(ctx, r.owner, r.repo)
+		if err != nil {
+			continue
+		}
+
+		// 1. Discover scope names from tags (CLI: collect_tags_with_scope)
+		scopeNames := map[string]bool{}
+		for _, ref := range tags {
+			tag := strings.TrimPrefix(ref.GetRef(), "refs/tags/")
+			scopeName, _ := splitTag(tag)
+			if scopeName != "" {
+				scopeNames[scopeName] = true
+			}
+		}
+
+		// 2. Auto-detect scope→dir mapping by scanning src/, packages/, apps/ (CLI: auto_detect)
+		scopeDir := map[string]string{}
+		for _, base := range []string{"src", "packages", "apps"} {
+			subdirs, err := gh.ListDir(ctx, r.owner, r.repo, base)
+			if err != nil {
+				continue
+			}
+			for _, name := range subdirs {
+				if scopeNames[name] {
+					scopeDir[name] = base + "/" + name
+				}
+			}
+		}
+
+		// 3. Always add root scope
+		scopes = append(scopes, ScopeMapping{Owner: r.owner, Repo: r.repo})
+
+		// 4. Add scoped scopes with resolved dirs
+		for name := range scopeNames {
+			dir, ok := scopeDir[name]
+			if !ok {
+				dir = name // CLI fallback: scope name as dir
+			}
+			scopes = append(scopes, ScopeMapping{
+				Owner: r.owner,
+				Repo:  r.repo,
+				Name:  name,
+				Dir:   dir,
+			})
+		}
+	}
+
+	return scopes
 }
 
 type authTransport struct {

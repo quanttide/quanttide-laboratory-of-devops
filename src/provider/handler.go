@@ -12,11 +12,11 @@ import (
 )
 
 type handler struct {
-	gh       *GitHubClient
-	store    *ShelvedStore
-	logger   *slog.Logger
-	scopes   []Scope
-	mu       sync.RWMutex
+	gh         *GitHubClient
+	store      *ShelvedStore
+	logger     *slog.Logger
+	scopes     []ScopeMapping
+	mu         sync.RWMutex
 	lastReport *ConvergeReport
 }
 
@@ -24,13 +24,13 @@ func Routes(h *handler) http.Handler {
 	r := chi.NewRouter()
 	r.Get("/health", h.Health)
 	r.Get("/scan", h.ScanAll)
-	r.Get("/scan/*", h.Scan)
-	r.Post("/repair/*", h.Repair)
+	r.Get("/scan/{scope:*}", h.Scan)
+	r.Post("/repair/{scope:*}", h.Repair)
 	r.Get("/report", h.Report)
 	return r
 }
 
-func NewHandler(gh *GitHubClient, store *ShelvedStore, logger *slog.Logger, scopes []Scope) *handler {
+func NewHandler(gh *GitHubClient, store *ShelvedStore, logger *slog.Logger, scopes []ScopeMapping) *handler {
 	return &handler{gh: gh, store: store, logger: logger, scopes: scopes}
 }
 
@@ -39,17 +39,38 @@ func (h *handler) Health(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
+func (h *handler) resolveScope(scopeStr string) (*ScopeMapping, error) {
+	s := Scope(scopeStr)
+	m, err := ParseScope(s)
+	if err != nil {
+		return nil, err
+	}
+	// Try to find dir from pre-resolved scopes
+	for _, sm := range h.scopes {
+		if sm.Owner == m.Owner && sm.Repo == m.Repo && sm.Name == m.Name {
+			return &sm, nil
+		}
+	}
+	return &m, nil
+}
+
 func (h *handler) Scan(w http.ResponseWriter, r *http.Request) {
-	scope := Scope(chi.URLParam(r, "*"))
-	if scope.IsZero() {
+	scopeStr := chi.URLParam(r, "*")
+	if scopeStr == "" {
 		http.Error(w, `{"error":"missing scope"}`, http.StatusBadRequest)
 		return
 	}
 
-	scanner := NewScanner(h.gh)
-	result, err := scanner.ScanScope(r.Context(), scope)
+	m, err := h.resolveScope(scopeStr)
 	if err != nil {
-		h.logger.Error("scan failed", "scope", scope, "error", err)
+		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusBadRequest)
+		return
+	}
+
+	scanner := NewScanner(h.gh)
+	result, err := scanner.ScanScope(r.Context(), *m)
+	if err != nil {
+		h.logger.Error("scan failed", "scope", scopeStr, "error", err)
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
 		return
 	}
@@ -69,7 +90,8 @@ func (h *handler) ScanAll(w http.ResponseWriter, r *http.Request) {
 		Normal:       stats.Normal,
 		Shelved:      stats.Shelved,
 		CausalBreaks: stats.CausalBreaks,
-		Errors:       stats.Abnormal - stats.CausalBreaks,
+		PendingRel:   stats.PendingRel,
+		Errors:       stats.Abnormal - stats.CausalBreaks - stats.PendingRel,
 		Results:      results,
 	}
 
@@ -96,16 +118,22 @@ func (h *handler) Report(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) Repair(w http.ResponseWriter, r *http.Request) {
-	scope := Scope(chi.URLParam(r, "*"))
-	if scope.IsZero() {
+	scopeStr := chi.URLParam(r, "*")
+	if scopeStr == "" {
 		http.Error(w, `{"error":"missing scope"}`, http.StatusBadRequest)
 		return
 	}
 
-	scanner := NewScanner(h.gh)
-	result, err := scanner.ScanScope(r.Context(), scope)
+	m, err := h.resolveScope(scopeStr)
 	if err != nil {
-		h.logger.Error("pre-repair scan failed", "scope", scope, "error", err)
+		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusBadRequest)
+		return
+	}
+
+	scanner := NewScanner(h.gh)
+	result, err := scanner.ScanScope(r.Context(), *m)
+	if err != nil {
+		h.logger.Error("pre-repair scan failed", "scope", scopeStr, "error", err)
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
 		return
 	}
@@ -118,7 +146,7 @@ func (h *handler) Repair(w http.ResponseWriter, r *http.Request) {
 	repairer := NewRepairer(h.gh, h.store, h.logger)
 	action, err := repairer.Repair(r.Context(), *result)
 	if err != nil {
-		h.logger.Error("repair failed", "scope", scope, "error", err)
+		h.logger.Error("repair failed", "scope", scopeStr, "error", err)
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
 		return
 	}
@@ -129,25 +157,21 @@ func (h *handler) Repair(w http.ResponseWriter, r *http.Request) {
 
 func (h *handler) converge(ctx context.Context, scanner *Scanner) []ScanResult {
 	var results []ScanResult
-	for _, scope := range h.scopes {
+	for _, m := range h.scopes {
 		select {
 		case <-ctx.Done():
 			return results
 		default:
 		}
-		result, err := scanner.ScanScope(ctx, scope)
+		result, err := scanner.ScanScope(ctx, m)
 		if err != nil {
-			h.logger.Error("converge scan", "scope", scope, "error", err)
-			results = append(results, ScanResult{Scope: scope, Status: StatusUnreleased, Summary: err.Error()})
+			h.logger.Error("converge scan", "scope", scopeStr(m), "error", err)
+			results = append(results, ScanResult{Scope: Scope(m.Owner + "/" + m.Repo), Status: StatusUnreleased, Summary: err.Error()})
 			continue
 		}
 		results = append(results, *result)
 	}
 	return results
-}
-
-func reportTime() time.Time {
-	return time.Now().UTC()
 }
 
 func (h *handler) convergeAndRepair(ctx context.Context) *ConvergeReport {
@@ -167,9 +191,13 @@ func (h *handler) convergeAndRepair(ctx context.Context) *ConvergeReport {
 		}
 		fixed++
 
-		rescan, err := scanner.ScanScope(ctx, r.Scope)
-		if err == nil {
-			results[i] = *rescan
+		// Re-scan after repair
+		m, _ := h.resolveScope(string(r.Scope))
+		if m != nil {
+			rescan, err := scanner.ScanScope(ctx, *m)
+			if err == nil {
+				results[i] = *rescan
+			}
 		}
 	}
 
@@ -181,7 +209,8 @@ func (h *handler) convergeAndRepair(ctx context.Context) *ConvergeReport {
 		Fixed:        fixed,
 		Shelved:      stats.Shelved,
 		CausalBreaks: stats.CausalBreaks,
-		Errors:       stats.Abnormal - stats.CausalBreaks,
+		PendingRel:   stats.PendingRel,
+		Errors:       stats.Abnormal - stats.CausalBreaks - stats.PendingRel,
 	}
 
 	h.mu.Lock()
@@ -189,4 +218,15 @@ func (h *handler) convergeAndRepair(ctx context.Context) *ConvergeReport {
 	h.mu.Unlock()
 
 	return &report
+}
+
+func scopeStr(m ScopeMapping) string {
+	if m.Name == "" {
+		return m.Owner + "/" + m.Repo
+	}
+	return m.Owner + "/" + m.Repo + "/" + m.Name
+}
+
+func reportTime() time.Time {
+	return time.Now().UTC()
 }

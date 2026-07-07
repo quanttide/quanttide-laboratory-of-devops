@@ -46,8 +46,8 @@ Release   ← 派生制品，API 重建
 
 | Scope | GitHub 仓库 | 状态 |
 |-------|------------|------|
-| `quanttide/qtcloud-devops` | qtcloud-devops | causal_break |
-| `quanttide/quanttide-devops-toolkit` | quanttide-devops-toolkit | missing_changelog |
+| `quanttide/qtcloud-devops/cli` | qtcloud-devops | causal_break |
+| `quanttide/quanttide-devops-toolkit` | quanttide-devops-toolkit | causal_break |
 | `quanttide/qtcloud-code` | qtcloud-code | missing_changelog |
 | `quanttide/qtadmin` | qtadmin | causal_break |
 | `quanttide/quanttide-website` | quanttide-website | unreleased (404) |
@@ -56,17 +56,18 @@ Release   ← 派生制品，API 重建
 
 | 仓库 | 问题 | 详情 |
 |------|------|------|
-| qtcloud-devops | 因果断裂 | tag=v0.0.1, CL=v0.8.3, Release=v0.10.0 — 三版本全不一致 |
-| quanttide-devops-toolkit | 缺 CHANGELOG | tag=v0.1.0, Release=v0.3.0, CHANGELOG 无 |
-| qtcloud-code | 缺 CHANGELOG | tag=v0.1.0, Release=v0.1.0 匹配，缺 CHANGELOG |
-| qtadmin | 因果断裂 | tag=v0.0.1, CL=v1.0.0, Release=v0.0.17 — 三版本全不一致 |
+| qtcloud-devops/cli | 因果断裂 | tag(v0.10.0)=rel(v0.10.0)，CL(v0.1.0) 不匹配 |
+| quanttide-devops-toolkit | 因果断裂 | 有 Release(v0.1.0) 但无 tag — 派生制品悬空 |
+| qtcloud-code | 缺 CHANGELOG | tag(v0.1.0)=rel(v0.1.0)，CHANGELOG 无 |
+| qtadmin | 因果断裂 | tag(v0.1.1)=rel(v0.1.1)，CL(v1.0.0) 不匹配 |
 
 ### 已知缺陷
 
 | 缺陷 | 影响 | 状态 |
 |------|------|------|
 | 补 CHANGELOG 时 PR base=head="main" 导致空 diff | 修复执行器不可用 | 待修 |
-| `tags[0]` 取 API 默认排序第一个（可能最旧）而非 semver 最新 | 版本匹配不准 | 待修 |
+| `tags[0]` 取 API 默认第一个而非 semver 最新 | 已修复 |
+| scope 无前缀过滤，跨 scope 比较 tag 和 CHANGELOG | 已修复 |
 | scope 列表硬编码 | 新增仓库需改代码 | ROADMAP [ ] |
 | `shelved.json` 单进程文件锁 | 多实例覆盖 | ponytail: 原型够用 |
 

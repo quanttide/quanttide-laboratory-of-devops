@@ -4,41 +4,37 @@
 
 实验室是 CLI 功能和 Provider 服务的原型验证场。所有 roadmap 上的功能先在这里验证，再推进到对应的产品仓库。
 
-## 双线结构
+## 三线结构
 
 ```
 examples/default/
-├── Cargo.toml        — workspace root
-├── cli/              — CLI 原型（对应 apps/qtcloud-devops/src/cli）
-│   ├── Cargo.toml
-│   └── src/
-└── provider/         — 服务端原型（对应未来服务端组件）
+├── pyproject.toml    # Python — 测试编排、集成测试
+├── tests/            # pytest 集成测试
+├── src/              # Go — 服务端/provider 原型
+│   ├── go.mod
+│   └── main.go
+└── cli/              # Rust — CLI 原型
     ├── Cargo.toml
     └── src/
 ```
 
-### CLI 线
+### 测试编排（Python / 根目录）
 
-CLI 侧的原型验证继续遵循现有模式：命令先在 lab 的 `cli/` 包中实现、跑通、发现问题，再迁移到 `apps/qtcloud-devops/src/cli/`。依赖 crates.io 的 `qtcloud-devops-cli`，不设路径依赖。
+`pytest` 写集成测试，用 `subprocess` 调 CLI、HTTP 请求调 provider。
 
-### Provider 线
+### Provider 原型（Go / src/）
 
-Provider 侧的原型验证用于：
+服务端能力原型验证：
 - artifact 完整性扫描与批量修复
 - 跨仓库发布协调
 - 审计日志持久化
 - 需要全局视角或持久状态的操作
 
-这些功能不适合 CLI 的单机模型，需要在 lab 中以服务端形态验证设计，再决定是融入 `packages/quanttide-devops-toolkit` 还是独立为新的服务组件。
+### CLI 原型（Rust / cli/）
 
-## 依赖策略
+CLI 侧的原型验证继续遵循现有模式：先在 lab 验证，再迁移到 `apps/qtcloud-devops/src/cli/`。
 
-| 依赖 | CLI 线 | Provider 线 |
-|------|--------|------------|
-| `qtcloud-devops-cli` | crates.io | 不直接依赖 |
-| `quanttide-devops-toolkit` | crates.io | 路径依赖，本地开发 |
-| `serde` / `serde_yaml` | 通用 | 通用 |
-| `actix-web` / `axum` | 不需要 | 可能用于服务端 |
+依赖 crates.io 的 `qtcloud-devops-cli`，不设路径依赖，模拟真实第三方使用场景。
 
 ## 分界线
 

@@ -1,4 +1,4 @@
-*.profraw
-*.profdata
-target/
-docs/bench-results/
+/target
+__pycache__
+*.pyc
+.venv
